@@ -1,0 +1,20 @@
+wandb
+pytorch-lightning
+hydra-core
+omegaconf
+scikit-learn
+einops
+easydict
+panda3d-simplepbr
+h5py
+av2
+timm
+
+# For SID Dataset
+pandas
+numpy
+matplotlib
+pyproj
+loguru
+-e git+https://github.com/metadriverse/metadrive.git@0624f72a37d82ae26677b01bc6226bd6883ff02a#egg=metadrive_simulator
+-e git+https://github.com/metadriverse/scenarionet.git@c6775d719747df42fc1b5fc2aaf0b4da87b360d5#egg=scenarionet
