@@ -788,8 +788,8 @@ class BaseDataset(Dataset):
 
                 polyline_list.append(segment_list)
                 polyline_mask_list.append(segment_mask_list)
-        if len(polyline_list) == 0: return np.zeros((num_agents, 0, max_points_per_lane, 7)), np.zeros(
-            (num_agents, 0, max_points_per_lane))
+        if len(polyline_list) == 0: return np.zeros((num_agents, 0, max_points_per_lane, 29)), np.zeros(
+            (num_agents, 0, max_points_per_lane)), np.zeros((num_agents, 0, 3), dtype=np.float32)
         batch_polylines = np.concatenate(polyline_list, axis=1)
         batch_polylines_mask = np.concatenate(polyline_mask_list, axis=1)
 
