@@ -220,6 +220,16 @@ class MTREncoder(nn.Module):
         obj_trajs, obj_trajs_mask = input_dict['obj_trajs'], input_dict['obj_trajs_mask']
         map_polylines, map_polylines_mask = input_dict['map_polylines'], input_dict['map_polylines_mask']
 
+        expected_map_attr = self.model_cfg.NUM_INPUT_ATTR_MAP
+        if map_polylines.shape[-1] > expected_map_attr:
+            # Older released checkpoints may expect the pre-one-hot 9D map representation.
+            map_polylines = map_polylines[..., :expected_map_attr]
+        elif map_polylines.shape[-1] < expected_map_attr:
+            raise ValueError(
+                f"map_polylines has {map_polylines.shape[-1]} features, "
+                f"but the model expects {expected_map_attr}"
+            )
+
         obj_trajs_last_pos = input_dict['obj_trajs_last_pos']
         map_polylines_center = input_dict['map_polylines_center']
         track_index_to_predict = input_dict['track_index_to_predict']
