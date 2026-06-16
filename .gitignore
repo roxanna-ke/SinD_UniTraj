@@ -1,0 +1,57 @@
+# macOS
+.DS_Store
+**/.DS_Store
+
+# Python bytecode and caches
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.cache/
+
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+
+# Packaging and build outputs
+build/
+dist/
+*.egg-info/
+.eggs/
+*.egg
+pip-wheel-metadata/
+
+# Logs and runtime files
+*.log
+*.tmp
+*.temp
+
+# Notebooks
+.ipynb_checkpoints/
+
+# Local environment files
+.env
+.env.*
+!.env.example
+
+# Project data and generated outputs
+SinD/Data/
+SinD/Dataset/
+UniTraj/unitraj/data_samples/
+UniTraj/scenarionet_output/
+sind_converter/cache/
+
+# Model checkpoints and experiment artifacts
+checkpoints/
+outputs/
+runs/
+wandb/
+lightning_logs/
+*.ckpt
+*.pth
+*.pt
+
