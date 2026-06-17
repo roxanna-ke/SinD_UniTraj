@@ -64,6 +64,7 @@ source "${VENV_DIR}/bin/activate"
 LOCAL_CACHE_ROOT="${SCRATCH:-$SCRATCH_ROOT}"
 export MPLCONFIGDIR="${MPLCONFIGDIR:-$LOCAL_CACHE_ROOT/matplotlib}"
 export TORCH_HOME="${TORCH_HOME:-$LOCAL_CACHE_ROOT/torch}"
+export PYTHONPATH="${PROJECT_ROOT}:${PROJECT_ROOT}/UniTraj:${PYTHONPATH:-}"
 export PYTHONUNBUFFERED=1
 mkdir -p "$MPLCONFIGDIR" "$TORCH_HOME"
 
@@ -107,7 +108,7 @@ COMMON_ARGS=(
 )
 
 echo "[step] minimal canonical conversion smoke test"
-srun python sind_converter/scripts/sind_pipeline.py convert-scenarios \
+srun python -m sind_converter.scripts.sind_pipeline convert-scenarios \
   "${COMMON_ARGS[@]}" \
   --max-records "${MAX_RECORDS}" \
   --max-scenarios-per-record "${MAX_SCENARIOS_PER_RECORD}"
@@ -121,7 +122,7 @@ for file_name in dataset_summary.pkl dataset_mapping.pkl; do
 done
 
 echo "[step] minimal split smoke test"
-srun python sind_converter/scripts/sind_pipeline.py make-splits \
+srun python -m sind_converter.scripts.sind_pipeline make-splits \
   "${COMMON_ARGS[@]}" \
   --canonical-root "${canonical_dir}" \
   --mode record-level \
