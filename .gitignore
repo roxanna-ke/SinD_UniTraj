@@ -44,6 +44,10 @@ SinD/Dataset/
 UniTraj/unitraj/data_samples/
 UniTraj/scenarionet_output/
 sind_converter/cache/
+_tmp_audit_check/
+osm_audit_four_cities/*
+!osm_audit_four_cities/
+!osm_audit_four_cities/osm_training_mapping_table.csv
 
 # Model checkpoints and experiment artifacts
 checkpoints/

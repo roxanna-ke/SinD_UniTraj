@@ -11,6 +11,7 @@ class ConverterConfig:
     canonical_scenario_root: Path
     split_root: Path
     cache_root: Path
+    training_mapping_table: Path | None = None
     dataset_name: str = "sind"
     dataset_version: str = "v1"
     past_len: int = 21

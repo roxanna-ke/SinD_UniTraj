@@ -13,6 +13,7 @@ def _config_from_args(args: argparse.Namespace) -> ConverterConfig:
         canonical_scenario_root=args.canonical_scenario_root,
         split_root=args.split_root,
         cache_root=args.cache_root,
+        training_mapping_table=args.training_mapping_table,
         dataset_name=args.dataset_name,
         dataset_version=args.dataset_version,
         past_len=args.past_len,
@@ -31,6 +32,7 @@ def main() -> None:
     common.add_argument("--canonical-scenario-root", type=Path, required=True)
     common.add_argument("--split-root", type=Path, required=True)
     common.add_argument("--cache-root", type=Path, required=True)
+    common.add_argument("--training-mapping-table", type=Path, default=None)
     common.add_argument("--dataset-name", default="sind")
     common.add_argument("--dataset-version", default="v1")
     common.add_argument("--past-len", type=int, default=21)

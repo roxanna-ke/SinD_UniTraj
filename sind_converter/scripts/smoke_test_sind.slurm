@@ -1,7 +1,7 @@
 #!/bin/bash
 #SBATCH --job-name=sind_smoke
-#SBATCH --output=logs/%x-%j.out
-#SBATCH --error=logs/%x-%j.err
+#SBATCH --output=/home/%u/projects/SinD_UniTraj/logs/%x-%j.out
+#SBATCH --error=/home/%u/projects/SinD_UniTraj/logs/%x-%j.err
 #SBATCH --partition=gpu
 #SBATCH --qos=debug
 #SBATCH --nodes=1
@@ -13,17 +13,19 @@
 
 set -euo pipefail
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROJECT_ROOT="${PROJECT_ROOT:-$(cd "${SCRIPT_DIR}/../.." && pwd)}"
+PROJECT_ROOT="${PROJECT_ROOT:-${SLURM_SUBMIT_DIR:-/home/ke/projects/SinD_UniTraj}}"
 VENV_DIR="${VENV_DIR:-$HOME/venvs/mtr-izar}"
 DATA_ROOT="${DATA_ROOT:-/scratch/izar/ke/sind_raw}"
 MAP_FALLBACK_ROOT="${MAP_FALLBACK_ROOT:-${DATA_ROOT}}"
 SCRATCH_ROOT="${SCRATCH_ROOT:-/scratch/izar/ke/sind_cache}"
 SMOKE_ROOT="${SMOKE_ROOT:-${SCRATCH_ROOT}/smoke_test}"
-SMOKE_OUTPUT_ROOT="${SMOKE_OUTPUT_ROOT:-${SMOKE_ROOT}/scenarionet_output}"
+SMOKE_CANONICAL_ROOT="${SMOKE_CANONICAL_ROOT:-${SMOKE_ROOT}/canonical_scenarios}"
+SMOKE_SPLIT_ROOT="${SMOKE_SPLIT_ROOT:-${SMOKE_ROOT}/splits}"
+SMOKE_CACHE_ROOT="${SMOKE_CACHE_ROOT:-${SMOKE_ROOT}/unitraj_cache}"
 STRIDE="${STRIDE:-40}"
-MAX_RECORDS="${MAX_RECORDS:-2}"
+MAX_RECORDS="${MAX_RECORDS:-8}"
 MAX_SCENARIOS_PER_RECORD="${MAX_SCENARIOS_PER_RECORD:-1}"
+TRAINING_MAPPING_TABLE="${TRAINING_MAPPING_TABLE:-${PROJECT_ROOT}/osm_audit_four_cities/osm_training_mapping_table.csv}"
 
 if [ ! -f "${VENV_DIR}/bin/activate" ]; then
   echo "[error] Virtual environment not found: ${VENV_DIR}/bin/activate" >&2
@@ -45,7 +47,13 @@ if [ ! -d "${MAP_FALLBACK_ROOT}" ]; then
   exit 1
 fi
 
-mkdir -p "${SMOKE_OUTPUT_ROOT}" "${PROJECT_ROOT}/logs"
+if [ ! -f "${TRAINING_MAPPING_TABLE}" ]; then
+  echo "[error] OSM training mapping table not found: ${TRAINING_MAPPING_TABLE}" >&2
+  echo "[hint] Run sind_pipeline.py audit-maps first, or set TRAINING_MAPPING_TABLE to the audited CSV." >&2
+  exit 1
+fi
+
+mkdir -p "${SMOKE_CANONICAL_ROOT}" "${SMOKE_SPLIT_ROOT}" "${SMOKE_CACHE_ROOT}" "${PROJECT_ROOT}/logs"
 
 cd "${PROJECT_ROOT}"
 
@@ -62,7 +70,9 @@ mkdir -p "$MPLCONFIGDIR" "$TORCH_HOME"
 echo "[info] host=$(hostname)"
 echo "[info] project_root=${PROJECT_ROOT}"
 echo "[info] data_root=${DATA_ROOT}"
-echo "[info] smoke_output_root=${SMOKE_OUTPUT_ROOT}"
+echo "[info] training_mapping_table=${TRAINING_MAPPING_TABLE}"
+echo "[info] smoke_canonical_root=${SMOKE_CANONICAL_ROOT}"
+echo "[info] smoke_split_root=${SMOKE_SPLIT_ROOT}"
 python --version
 which python
 
@@ -76,8 +86,9 @@ if missing:
 
 repo_imports = [
     "sind_converter.data.discovery",
+    "sind_converter.scripts.sind_pipeline",
     "sind_converter.scenarios.convert",
-    "unitraj.utils.sind_converter",
+    "sind_converter.splits.make",
 ]
 for name in repo_imports:
     importlib.import_module(name)
@@ -85,17 +96,40 @@ for name in repo_imports:
 print("Environment and import smoke check passed.")
 PY
 
-echo "[step] minimal conversion smoke test"
-srun python UniTraj/unitraj/utils/sind_converter.py \
-  --sind-data-root "${DATA_ROOT}" \
-  --map-fallback-root "${MAP_FALLBACK_ROOT}" \
-  --output-dir "${SMOKE_OUTPUT_ROOT}" \
-  --stride "${STRIDE}" \
+COMMON_ARGS=(
+  --data-root "${DATA_ROOT}"
+  --map-fallback-root "${MAP_FALLBACK_ROOT}"
+  --canonical-scenario-root "${SMOKE_CANONICAL_ROOT}"
+  --split-root "${SMOKE_SPLIT_ROOT}"
+  --cache-root "${SMOKE_CACHE_ROOT}"
+  --training-mapping-table "${TRAINING_MAPPING_TABLE}"
+  --stride "${STRIDE}"
+)
+
+echo "[step] minimal canonical conversion smoke test"
+srun python sind_converter/scripts/sind_pipeline.py convert-scenarios \
+  "${COMMON_ARGS[@]}" \
   --max-records "${MAX_RECORDS}" \
   --max-scenarios-per-record "${MAX_SCENARIOS_PER_RECORD}"
 
-for split in train val; do
-  split_dir="${SMOKE_OUTPUT_ROOT}/${split}/sind"
+canonical_dir="${SMOKE_CANONICAL_ROOT}/sind"
+for file_name in dataset_summary.pkl dataset_mapping.pkl; do
+  if [ ! -f "${canonical_dir}/${file_name}" ]; then
+    echo "[error] Missing ${canonical_dir}/${file_name}" >&2
+    exit 1
+  fi
+done
+
+echo "[step] minimal split smoke test"
+srun python sind_converter/scripts/sind_pipeline.py make-splits \
+  "${COMMON_ARGS[@]}" \
+  --canonical-root "${canonical_dir}" \
+  --mode record-level \
+  --train-ratio 0.8 \
+  --seed 42
+
+for split in train test; do
+  split_dir="${SMOKE_SPLIT_ROOT}/record_level/${split}/sind"
   if [ ! -f "${split_dir}/dataset_summary.pkl" ]; then
     echo "[error] Missing ${split_dir}/dataset_summary.pkl" >&2
     exit 1
@@ -105,5 +139,15 @@ for split in train val; do
     exit 1
   fi
 done
+
+echo "[step] minimal UniTraj validation smoke test"
+srun python sind_converter/scripts/build_sind_unitraj_caches.py \
+  --train-dir "${SMOKE_SPLIT_ROOT}/record_level/train/sind" \
+  --val-dir "${SMOKE_SPLIT_ROOT}/record_level/test/sind" \
+  --cache-root "${SMOKE_CACHE_ROOT}" \
+  --methods MTR \
+  --check-samples 1 \
+  --dry-run-samples 1 \
+  --validate-only
 
 echo "[done] smoke test passed"

@@ -13,7 +13,12 @@ from scenarionet.converter.utils import write_to_directory_single_worker
 from sind_converter.config.defaults import ConverterConfig
 from sind_converter.data.discovery import RecordDescription, discover_records
 from sind_converter.data.loading import load_record
-from sind_converter.maps.osm import parse_osm_map
+from sind_converter.maps.osm import (
+    TrainingMapAdmissionRules,
+    build_admission_rules,
+    load_training_mapping_table,
+    parse_osm_map,
+)
 from sind_converter.scenarios.build import ScenarioWindow, convert_window_to_scenario, generate_windows
 
 
@@ -37,9 +42,10 @@ def windows_for_record(
     future_len: int,
     stride: int,
     max_scenarios: int | None = None,
+    admission_rules: TrainingMapAdmissionRules | None = None,
 ) -> list[ScenarioWindow]:
     loaded = load_record(record)
-    map_features, lane_centers = parse_osm_map(record.map_path)
+    map_features, lane_centers = parse_osm_map(record.map_path, admission_rules=admission_rules)
     return generate_windows(
         city=record.city,
         record_name=record.record_name,
@@ -66,6 +72,11 @@ def convert_scenarios(
     records = discover_records(config.data_root, config.map_fallback_root, cities=cities)
     if max_records is not None:
         records = records[:max_records]
+    admission_rules = (
+        build_admission_rules(load_training_mapping_table(config.training_mapping_table))
+        if config.training_mapping_table is not None
+        else None
+    )
     windows: list[ScenarioWindow] = []
     for record in records:
         windows.extend(
@@ -75,6 +86,7 @@ def convert_scenarios(
                 future_len=config.future_len,
                 stride=config.stride,
                 max_scenarios=max_scenarios_per_record,
+                admission_rules=admission_rules,
             )
         )
     if not windows:
