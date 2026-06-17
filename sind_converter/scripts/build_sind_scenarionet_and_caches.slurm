@@ -3,20 +3,20 @@
 #SBATCH --output=logs/%x-%j.out
 #SBATCH --error=logs/%x-%j.err
 #SBATCH --partition=gpu
-#SBATCH --qos=debug
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
-#SBATCH --time=24:00:00
+#SBATCH --time=12:00:00
 #SBATCH --cpus-per-task=4
-#SBATCH --mem=64G
+#SBATCH --mem=32G
 #SBATCH --gres=gpu:1
 
 set -euo pipefail
 
-PROJECT_ROOT="${PROJECT_ROOT:-/home/ke/projects/SinD_UniTraj}"
-VENV_DIR="${VENV_DIR:-$HOME/projects/venvs/mtr-izar}"
-DATA_ROOT="${DATA_ROOT:-${PROJECT_ROOT}/SinD/Dataset}"
-MAP_FALLBACK_ROOT="${MAP_FALLBACK_ROOT:-${PROJECT_ROOT}/SinD/Data}"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="${PROJECT_ROOT:-$(cd "${SCRIPT_DIR}/../.." && pwd)}"
+VENV_DIR="${VENV_DIR:-$HOME/venvs/mtr-izar}"
+DATA_ROOT="${DATA_ROOT:-/scratch/izar/ke/sind_raw}"
+MAP_FALLBACK_ROOT="${MAP_FALLBACK_ROOT:-${DATA_ROOT}}"
 SCRATCH_ROOT="${SCRATCH_ROOT:-/scratch/izar/ke/sind_cache}"
 SCENARIONET_OUTPUT_ROOT="${SCENARIONET_OUTPUT_ROOT:-${SCRATCH_ROOT}/scenarionet_output}"
 CACHE_ROOT="${CACHE_ROOT:-${SCRATCH_ROOT}/unitraj_cache}"
