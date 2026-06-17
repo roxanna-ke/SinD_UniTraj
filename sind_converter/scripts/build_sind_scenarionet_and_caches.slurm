@@ -72,6 +72,7 @@ source "${VENV_DIR}/bin/activate"
 LOCAL_CACHE_ROOT="${SCRATCH:-$SCRATCH_ROOT}"
 export MPLCONFIGDIR="${MPLCONFIGDIR:-$LOCAL_CACHE_ROOT/matplotlib}"
 export TORCH_HOME="${TORCH_HOME:-$LOCAL_CACHE_ROOT/torch}"
+export PYTHONPATH="${PROJECT_ROOT}:${PROJECT_ROOT}/UniTraj:${PYTHONPATH:-}"
 export PYTHONUNBUFFERED=1
 mkdir -p "$MPLCONFIGDIR" "$TORCH_HOME"
 
@@ -114,7 +115,7 @@ if [ -n "${CITIES}" ]; then
   CONVERT_EXTRA_ARGS+=(--cities "${CITY_ARRAY[@]}")
 fi
 
-srun python sind_converter/scripts/sind_pipeline.py convert-scenarios \
+srun python -m sind_converter.scripts.sind_pipeline convert-scenarios \
   "${COMMON_ARGS[@]}" \
   "${CONVERT_EXTRA_ARGS[@]}"
 
@@ -147,7 +148,7 @@ else
   VAL_SPLIT_DIR="${SPLIT_ROOT}/city_holdout/test/sind"
 fi
 
-srun python sind_converter/scripts/sind_pipeline.py make-splits \
+srun python -m sind_converter.scripts.sind_pipeline make-splits \
   "${COMMON_ARGS[@]}" \
   "${SPLIT_ARGS[@]}"
 
