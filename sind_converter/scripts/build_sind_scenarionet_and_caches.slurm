@@ -6,7 +6,7 @@
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --time=12:00:00
-#SBATCH --cpus-per-task=4
+#SBATCH --cpus-per-task=8
 #SBATCH --mem=32G
 #SBATCH --gres=gpu:1
 
@@ -74,8 +74,20 @@ export MPLCONFIGDIR="${MPLCONFIGDIR:-$LOCAL_CACHE_ROOT/matplotlib}"
 export TORCH_HOME="${TORCH_HOME:-$LOCAL_CACHE_ROOT/torch}"
 export PYTHONPATH="${PROJECT_ROOT}:${PROJECT_ROOT}/UniTraj:${PYTHONPATH:-}"
 export PYTHONUNBUFFERED=1
+export OMP_NUM_THREADS="${OMP_NUM_THREADS:-1}"
+export MKL_NUM_THREADS="${MKL_NUM_THREADS:-1}"
 mkdir -p "$MPLCONFIGDIR" "$TORCH_HOME"
 
+echo "[info] host=$(hostname)"
+echo "[info] project_root=${PROJECT_ROOT}"
+echo "[info] data_root=${DATA_ROOT}"
+echo "[info] map_fallback_root=${MAP_FALLBACK_ROOT}"
+echo "[info] training_mapping_table=${TRAINING_MAPPING_TABLE}"
+echo "[info] canonical_root=${CANONICAL_ROOT}"
+echo "[info] split_root=${SPLIT_ROOT}"
+echo "[info] cache_root=${CACHE_ROOT}"
+echo "[info] split_mode=${SPLIT_MODE}"
+echo "[info] stride=${STRIDE}"
 python --version
 which python
 
@@ -115,12 +127,21 @@ if [ -n "${CITIES}" ]; then
   CONVERT_EXTRA_ARGS+=(--cities "${CITY_ARRAY[@]}")
 fi
 
+echo "[step] canonical ScenarioNet conversion"
 srun python -m sind_converter.scripts.sind_pipeline convert-scenarios \
   "${COMMON_ARGS[@]}" \
   "${CONVERT_EXTRA_ARGS[@]}"
 
+CANONICAL_DIR="${CANONICAL_ROOT}/sind"
+for file_name in dataset_summary.pkl dataset_mapping.pkl; do
+  if [ ! -f "${CANONICAL_DIR}/${file_name}" ]; then
+    echo "[error] Missing ${CANONICAL_DIR}/${file_name}" >&2
+    exit 1
+  fi
+done
+
 SPLIT_ARGS=(
-  --canonical-root "${CANONICAL_ROOT}/sind"
+  --canonical-root "${CANONICAL_DIR}"
   --mode "${SPLIT_MODE}"
 )
 
@@ -148,10 +169,21 @@ else
   VAL_SPLIT_DIR="${SPLIT_ROOT}/city_holdout/test/sind"
 fi
 
+echo "[step] ScenarioNet split generation"
 srun python -m sind_converter.scripts.sind_pipeline make-splits \
   "${COMMON_ARGS[@]}" \
   "${SPLIT_ARGS[@]}"
 
+for split_dir in "${TRAIN_SPLIT_DIR}" "${VAL_SPLIT_DIR}"; do
+  for file_name in dataset_summary.pkl dataset_mapping.pkl; do
+    if [ ! -f "${split_dir}/${file_name}" ]; then
+      echo "[error] Missing ${split_dir}/${file_name}" >&2
+      exit 1
+    fi
+  done
+done
+
+echo "[step] UniTraj cache validation and build"
 srun python -m sind_converter.scripts.build_sind_unitraj_caches \
   --train-dir "${TRAIN_SPLIT_DIR}" \
   --val-dir "${VAL_SPLIT_DIR}" \
@@ -160,3 +192,19 @@ srun python -m sind_converter.scripts.build_sind_unitraj_caches \
   --check-samples "${CHECK_SAMPLES}" \
   --dry-run-samples "${DRY_RUN_SAMPLES}" \
   --overwrite
+
+for method in MTR autobot wayformer; do
+  for phase in train test; do
+    cache_dir="${CACHE_ROOT}/${method}/sind/${phase}"
+    if [ ! -f "${cache_dir}/file_list.pkl" ]; then
+      echo "[error] Missing ${cache_dir}/file_list.pkl" >&2
+      exit 1
+    fi
+    if ! compgen -G "${cache_dir}/*.h5" > /dev/null; then
+      echo "[error] Missing h5 cache files in ${cache_dir}" >&2
+      exit 1
+    fi
+  done
+done
+
+echo "[done] canonical scenarios, splits, and UniTraj caches were built successfully"
