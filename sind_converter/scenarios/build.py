@@ -26,6 +26,7 @@ class ScenarioWindow:
     city: str
     record_name: str
     start_frame: int
+    frame_ids: tuple[int, ...]
     timestamps_ms: tuple[float, ...]
     vehicle_rows: pd.DataFrame
     pedestrian_rows: pd.DataFrame
@@ -119,6 +120,7 @@ def generate_windows(
                 city=city,
                 record_name=record_name,
                 start_frame=start_frame,
+                frame_ids=tuple(int(frame) for frame in frames),
                 timestamps_ms=tuple(float(x) for x in timestamps_ms),
                 vehicle_rows=vehicle_rows,
                 pedestrian_rows=pedestrian_rows,
@@ -135,9 +137,9 @@ def generate_windows(
     return windows
 
 
-def build_track_state(track_df: pd.DataFrame, timestamps_ms: np.ndarray, object_type: str, total_length: int) -> dict[str, np.ndarray]:
+def build_track_state(track_df: pd.DataFrame, frame_ids: np.ndarray, object_type: str, total_length: int) -> dict[str, np.ndarray]:
     track_df = track_df.copy().sort_values("frame_id")
-    time_index = {float(ts): idx for idx, ts in enumerate(timestamps_ms)}
+    frame_index = {int(frame): idx for idx, frame in enumerate(frame_ids)}
     position = np.zeros((total_length, 3), dtype=np.float32)
     heading = np.zeros((total_length,), dtype=np.float32)
     velocity = np.zeros((total_length, 2), dtype=np.float32)
@@ -152,7 +154,7 @@ def build_track_state(track_df: pd.DataFrame, timestamps_ms: np.ndarray, object_
         height = np.full((total_length, 1), DEFAULT_VEHICLE_HEIGHT, dtype=np.float32)
 
     for _, row in track_df.iterrows():
-        idx = time_index.get(float(row["timestamp_ms"]))
+        idx = frame_index.get(int(row["frame_id"]))
         if idx is None:
             continue
         vx = float(row.get("vx", 0.0))
@@ -179,6 +181,7 @@ def convert_window_to_scenario(window: ScenarioWindow, dataset_version: str, dat
     scenario[SD.VERSION] = f"{dataset_name}_{dataset_version}"
     scenario[SD.LENGTH] = window.total_length
 
+    frame_ids = np.asarray(window.frame_ids, dtype=int)
     timestamps_ms = np.asarray(window.timestamps_ms, dtype=np.float32)
     timestamps_s = (timestamps_ms - timestamps_ms[0]) / 1000.0
     combined_tracks = [window.vehicle_rows.copy(), window.pedestrian_rows.copy()]
@@ -193,7 +196,7 @@ def convert_window_to_scenario(window: ScenarioWindow, dataset_version: str, dat
         object_type = infer_object_type(track_class)
         tracks[track_id] = {
             "type": object_type,
-            "state": build_track_state(track_df, timestamps_ms, object_type, window.total_length),
+            "state": build_track_state(track_df, frame_ids, object_type, window.total_length),
             "metadata": {"track_length": window.total_length, "type": track_class, "object_id": track_id, "dataset": dataset_name},
         }
 

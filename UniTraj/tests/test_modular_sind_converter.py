@@ -1,6 +1,8 @@
 from pathlib import Path
 import sys
 
+import numpy as np
+import pandas as pd
 import pytest
 
 
@@ -57,3 +59,50 @@ def test_modular_convert_writes_shared_multitarget_canonical_and_split(tmp_path)
     train_records = {meta["record_name"] for meta in train_summary.values()}
     test_records = {meta["record_name"] for meta in test_summary.values()}
     assert train_records.isdisjoint(test_records)
+
+
+def test_agent_state_uses_frame_id_alignment_when_timestamps_differ():
+    from sind_converter.scenarios.build import convert_window_to_scenario, generate_windows
+
+    frames = np.arange(100, 181)
+    target_rows = pd.DataFrame(
+        {
+            "track_id": ["target"] * len(frames),
+            "frame_id": frames,
+            "timestamp_ms": frames.astype(float) * 100.0 + 0.25,
+            "agent_type": ["car"] * len(frames),
+            "x": np.arange(len(frames), dtype=float),
+            "y": np.zeros(len(frames), dtype=float),
+            "vx": np.ones(len(frames), dtype=float),
+            "vy": np.zeros(len(frames), dtype=float),
+            "yaw_rad": np.zeros(len(frames), dtype=float),
+            "length": np.full(len(frames), 4.5),
+            "width": np.full(len(frames), 2.0),
+        }
+    )
+    timestamp_source_rows = target_rows.copy()
+    timestamp_source_rows["track_id"] = "timestamp_source"
+    timestamp_source_rows["timestamp_ms"] = frames.astype(float) * 100.0
+    vehicle_tracks = pd.concat([timestamp_source_rows, target_rows], ignore_index=True)
+    pedestrian_tracks = pd.DataFrame(
+        columns=["track_id", "frame_id", "timestamp_ms", "agent_type", "x", "y", "vx", "vy", "ax", "ay"]
+    )
+
+    windows = generate_windows(
+        city="Changchun",
+        record_name="synthetic",
+        vehicle_tracks=vehicle_tracks,
+        pedestrian_tracks=pedestrian_tracks,
+        map_features={},
+        lane_centers={},
+        traffic_light=None,
+        past_len=21,
+        future_len=60,
+        stride=81,
+        max_scenarios=1,
+    )
+
+    scenario = convert_window_to_scenario(windows[0], dataset_version="v1")
+    target_track = scenario["tracks"]["target"]
+    assert target_track["state"]["valid"][20] == 1.0
+    assert target_track["state"]["position"][20, 0] == 20.0
