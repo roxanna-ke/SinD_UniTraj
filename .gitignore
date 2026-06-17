@@ -60,3 +60,4 @@ lightning_logs/
 *.pt
 
 Summary/
+logs/
