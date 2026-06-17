@@ -152,7 +152,7 @@ srun python -m sind_converter.scripts.sind_pipeline make-splits \
   "${COMMON_ARGS[@]}" \
   "${SPLIT_ARGS[@]}"
 
-srun python sind_converter/scripts/build_sind_unitraj_caches.py \
+srun python -m sind_converter.scripts.build_sind_unitraj_caches \
   --train-dir "${TRAIN_SPLIT_DIR}" \
   --val-dir "${VAL_SPLIT_DIR}" \
   --cache-root "${CACHE_ROOT}" \

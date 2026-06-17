@@ -24,7 +24,8 @@ SMOKE_SPLIT_ROOT="${SMOKE_SPLIT_ROOT:-${SMOKE_ROOT}/splits}"
 SMOKE_CACHE_ROOT="${SMOKE_CACHE_ROOT:-${SMOKE_ROOT}/unitraj_cache}"
 STRIDE="${STRIDE:-40}"
 MAX_RECORDS="${MAX_RECORDS:-8}"
-MAX_SCENARIOS_PER_RECORD="${MAX_SCENARIOS_PER_RECORD:-1}"
+MAX_SCENARIOS_PER_RECORD="${MAX_SCENARIOS_PER_RECORD:-4}"
+DRY_RUN_SAMPLES="${DRY_RUN_SAMPLES:-8}"
 TRAINING_MAPPING_TABLE="${TRAINING_MAPPING_TABLE:-${PROJECT_ROOT}/osm_audit_four_cities/osm_training_mapping_table.csv}"
 
 if [ ! -f "${VENV_DIR}/bin/activate" ]; then
@@ -142,13 +143,13 @@ for split in train test; do
 done
 
 echo "[step] minimal UniTraj validation smoke test"
-srun python sind_converter/scripts/build_sind_unitraj_caches.py \
+srun python -m sind_converter.scripts.build_sind_unitraj_caches \
   --train-dir "${SMOKE_SPLIT_ROOT}/record_level/train/sind" \
   --val-dir "${SMOKE_SPLIT_ROOT}/record_level/test/sind" \
   --cache-root "${SMOKE_CACHE_ROOT}" \
   --methods MTR \
   --check-samples 1 \
-  --dry-run-samples 1 \
+  --dry-run-samples "${DRY_RUN_SAMPLES}" \
   --validate-only
 
 echo "[done] smoke test passed"

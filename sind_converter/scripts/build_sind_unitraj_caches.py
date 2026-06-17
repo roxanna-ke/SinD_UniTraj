@@ -154,7 +154,8 @@ def _dry_run_unitraj(method: str, split_dir: Path, summary: dict, scenario_files
 
     phase = split_dir.parent.name
     dataset_name = split_dir.name
-    sample_files = scenario_files[: args.dry_run_samples]
+    sample_count = min(len(scenario_files), max(args.dry_run_samples, min(32, len(scenario_files))))
+    sample_files = scenario_files[:sample_count]
     Dataset = _dataset_class(method)
 
     with tempfile.TemporaryDirectory(prefix=f"sind_unitraj_{method}_") as tmp:
@@ -168,7 +169,11 @@ def _dry_run_unitraj(method: str, split_dir: Path, summary: dict, scenario_files
             os.chdir(tmp_path)
             dataset = Dataset(cfg, is_validation=False)
             if len(dataset) == 0:
-                raise ValueError(f"UniTraj dry-run produced 0 samples for {method} on {split_dir}")
+                raise ValueError(
+                    f"UniTraj dry-run produced 0 samples for {method} on {split_dir}; "
+                    f"tried {len(sample_files)} of {len(scenario_files)} scenarios. "
+                    "Check earlier 'Warning:' lines from BaseDataset for the preprocessing reason."
+                )
             first = dataset[0]
             for key in ("obj_trajs", "obj_trajs_mask", "map_polylines", "track_index_to_predict"):
                 if key not in first:
