@@ -54,8 +54,9 @@ def train(cfg):
 
     use_ddp = (not cfg.debug) and len(cfg.devices) > 1
 
+    global_rank = int(os.environ.get("RANK", os.environ.get("SLURM_PROCID", "0")))
     wandb_project = os.environ.get("WANDB_PROJECT", cfg.get("wandb_project", "SinD_UniTraj"))
-    logger = None if cfg.debug else WandbLogger(project=wandb_project, name=cfg.exp_name, id=cfg.exp_name)
+    logger = None if cfg.debug or global_rank != 0 else WandbLogger(project=wandb_project, name=cfg.exp_name, id=cfg.exp_name)
 
     trainer = pl.Trainer(
         max_epochs=cfg.method.max_epochs,

@@ -4,7 +4,7 @@
 #SBATCH --error=/home/%u/projects/SinD_UniTraj/logs/%x-%j.err
 #SBATCH --partition=gpu
 #SBATCH --nodes=1
-#SBATCH --ntasks=1
+#SBATCH --ntasks=2
 #SBATCH --time=30:00:00
 #SBATCH --cpus-per-task=8
 #SBATCH --mem=64G
@@ -86,7 +86,7 @@ python -c "from unitraj.models.mtr.ops.attention import attention_cuda; from uni
 
 start_ts=$(date +%s)
 
-python unitraj/train.py \
+srun python unitraj/train.py \
   method=MTR \
   debug=False \
   exp_name="${EXP_NAME}" \
