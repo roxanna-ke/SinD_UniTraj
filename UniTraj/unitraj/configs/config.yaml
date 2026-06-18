@@ -11,6 +11,7 @@ train_data_path: [ "unitraj/data_samples/nuscenes" ] # list of paths to the trai
 val_data_path: [ "unitraj/data_samples/nuscenes" ] # list of paths to the validation data
 cache_path: "./cache"
 max_data_num: [ null ] # maximum number of data for each training dataset, null means all data
+max_val_data_num: null # maximum number of validation samples, null means all validation data
 starting_frame: [ 0 ] # history trajectory starts at this frame for each training dataset
 past_len: 21 # history trajectory length, 2.1s
 future_len: 60 # future trajectory length, 6s
@@ -24,6 +25,11 @@ use_cache: False # use cache for data loading
 overwrite_cache: False # overwrite existing cache
 store_data_in_memory: False # store data in memory
 remove_outliers: False # disable optional lane-distance filtering by default for sample/debug runs
+limit_train_batches: 1.0 # Lightning train batch limit, float ratio or integer batch count
+limit_val_batches: 1.0 # Lightning validation batch limit, float ratio or integer batch count
+num_sanity_val_steps: 2 # Lightning sanity validation steps before training
+full_validate_after_fit: False # run a full validation pass after training finishes
+full_validate_limit_val_batches: 1.0 # validation batch limit for the post-fit validation pass
 
 # official evaluation
 nuscenes_dataroot: '/mnt/nas3_rcp_enac_u0900_vita_scratch/datasets/Prediction-Dataset/nuscenes/nuscenes_root'
