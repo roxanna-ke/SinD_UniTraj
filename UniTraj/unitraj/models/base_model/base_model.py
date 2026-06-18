@@ -322,12 +322,13 @@ class BaseModel(pl.LightningModule):
         loss_dict = {key: np.mean(value) for key, value in loss_dict.items()}
 
         prog_bar_metrics = {'train/minADE6', 'train/minFDE6', 'train/brier_fde', 'val/minADE6', 'val/minFDE6', 'val/brier_fde'}
+        log_on_step = status == 'train' and self.config.get('log_train_metrics_on_step', False)
         for k, v in loss_dict.items():
             metric_name = status + "/" + k
             self.log(
                 metric_name,
                 v,
-                on_step=False,
+                on_step=log_on_step,
                 on_epoch=True,
                 sync_dist=True,
                 batch_size=size_dict[k],

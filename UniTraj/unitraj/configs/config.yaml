@@ -26,6 +26,7 @@ use_cache: False # use cache for data loading
 overwrite_cache: False # overwrite existing cache
 store_data_in_memory: False # store data in memory
 remove_outliers: False # disable optional lane-distance filtering by default for sample/debug runs
+log_train_metrics_on_step: False # also log train metrics every step
 limit_train_batches: 1.0 # Lightning train batch limit, float ratio or integer batch count
 limit_val_batches: 1.0 # Lightning validation batch limit, float ratio or integer batch count
 num_sanity_val_steps: 2 # Lightning sanity validation steps before training
