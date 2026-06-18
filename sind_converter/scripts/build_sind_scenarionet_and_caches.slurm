@@ -5,15 +5,14 @@
 #SBATCH --partition=gpu
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
-#SBATCH --time=12:00:00
-#SBATCH --cpus-per-task=8
+#SBATCH --time=4:00:00
+#SBATCH --cpus-per-task=4
 #SBATCH --mem=32G
 #SBATCH --gres=gpu:1
 
 set -euo pipefail
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROJECT_ROOT="${PROJECT_ROOT:-$(cd "${SCRIPT_DIR}/../.." && pwd)}"
+PROJECT_ROOT="${PROJECT_ROOT:-${SLURM_SUBMIT_DIR:-/home/ke/projects/SinD_UniTraj}}"
 VENV_DIR="${VENV_DIR:-$HOME/venvs/mtr-izar}"
 DATA_ROOT="${DATA_ROOT:-/scratch/izar/ke/sind_raw}"
 MAP_FALLBACK_ROOT="${MAP_FALLBACK_ROOT:-${DATA_ROOT}}"
@@ -36,28 +35,28 @@ CITIES="${CITIES:-}"
 TRAINING_MAPPING_TABLE="${TRAINING_MAPPING_TABLE:-${PROJECT_ROOT}/osm_audit_four_cities/osm_training_mapping_table.csv}"
 
 if [ ! -f "${VENV_DIR}/bin/activate" ]; then
-  echo "Virtual environment not found: ${VENV_DIR}" >&2
+  echo "[error] Virtual environment not found: ${VENV_DIR}/bin/activate" >&2
   exit 1
 fi
 
 if [ ! -d "${PROJECT_ROOT}" ]; then
-  echo "Project root not found: ${PROJECT_ROOT}" >&2
+  echo "[error] Project root not found: ${PROJECT_ROOT}" >&2
   exit 1
 fi
 
 if [ ! -d "${DATA_ROOT}" ]; then
-  echo "SinD dataset root not found: ${DATA_ROOT}" >&2
+  echo "[error] Data root not found: ${DATA_ROOT}" >&2
   exit 1
 fi
 
 if [ ! -d "${MAP_FALLBACK_ROOT}" ]; then
-  echo "SinD map root not found: ${MAP_FALLBACK_ROOT}" >&2
+  echo "[error] Map fallback root not found: ${MAP_FALLBACK_ROOT}" >&2
   exit 1
 fi
 
 if [ ! -f "${TRAINING_MAPPING_TABLE}" ]; then
-  echo "OSM training mapping table not found: ${TRAINING_MAPPING_TABLE}" >&2
-  echo "Run sind_pipeline.py audit-maps first, or set TRAINING_MAPPING_TABLE to the audited CSV." >&2
+  echo "[error] OSM training mapping table not found: ${TRAINING_MAPPING_TABLE}" >&2
+  echo "[hint] Run sind_pipeline.py audit-maps first, or set TRAINING_MAPPING_TABLE to the audited CSV." >&2
   exit 1
 fi
 
@@ -93,13 +92,22 @@ which python
 
 srun python - <<'PY'
 import importlib
+
 required = ["omegaconf", "numpy", "h5py", "torch", "metadrive"]
 missing = [name for name in required if importlib.util.find_spec(name) is None]
 if missing:
     raise SystemExit(f"Missing Python packages in active environment: {', '.join(missing)}")
-for name in ["sind_converter.scenarios.convert", "sind_converter.splits.make"]:
+
+repo_imports = [
+    "sind_converter.data.discovery",
+    "sind_converter.scripts.sind_pipeline",
+    "sind_converter.scenarios.convert",
+    "sind_converter.splits.make",
+]
+for name in repo_imports:
     importlib.import_module(name)
-print("Environment import check passed.")
+
+print("Environment and import check passed.")
 PY
 
 COMMON_ARGS=(
