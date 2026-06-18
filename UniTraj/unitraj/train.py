@@ -65,6 +65,9 @@ def train(cfg):
         strategy="ddp" if use_ddp else "auto",
         callbacks=call_backs,
         log_every_n_steps=1,
+        limit_train_batches=cfg.get('limit_train_batches', 1.0),
+        limit_val_batches=cfg.get('limit_val_batches', 1.0),
+        num_sanity_val_steps=cfg.get('num_sanity_val_steps', 2),
     )
 
     # automatically resume training

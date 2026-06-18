@@ -543,7 +543,8 @@ class BaseDataset(Dataset):
             # randomly sample data_usage number of data
             data_loaded = dict(data_list[:data_usage])
         else:
-            data_loaded = dict(data_list)
+            val_data_usage = self.config.get('max_val_data_num', None)
+            data_loaded = dict(data_list if val_data_usage is None else data_list[:val_data_usage])
         return data_loaded
 
     def get_agent_data(
