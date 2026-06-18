@@ -30,7 +30,8 @@ def data_analysis(cfg):
         train_set, batch_size=train_batch_size, num_workers=cfg.load_num_workers, drop_last=False,
         collate_fn=train_set.collate_fn)
 
-    wandb.init(project="unitraj", name=cfg.exp_name)
+    wandb_project = os.environ.get("WANDB_PROJECT", cfg.get("wandb_project", "SinD_UniTraj"))
+    wandb.init(project=wandb_project, name=cfg.exp_name)
     type_results = {}
     kalman_results = {}
     vehicle_sum = 0

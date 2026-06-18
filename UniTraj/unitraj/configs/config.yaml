@@ -1,5 +1,6 @@
 # exp setting
 exp_name: 'test' # name that will be used in wandb
+wandb_project: 'SinD_UniTraj' # W&B project name
 ckpt_path: null # checkpoint path, used for evaluation
 seed: 42 # random seed
 debug: True # debug mode, will use cpu only
