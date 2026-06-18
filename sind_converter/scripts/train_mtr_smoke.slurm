@@ -5,7 +5,7 @@
 #SBATCH --partition=gpu
 #SBATCH --qos=debug
 #SBATCH --nodes=1
-#SBATCH --ntasks=2
+#SBATCH --ntasks-per-node=2
 #SBATCH --time=01:00:00
 #SBATCH --cpus-per-task=4
 #SBATCH --mem=64G
@@ -107,6 +107,7 @@ srun python unitraj/train.py \
   method.eval_batch_size="${EVAL_BATCH_SIZE}" \
   limit_train_batches="${LIMIT_TRAIN_BATCHES}" \
   limit_val_batches="${LIMIT_VAL_BATCHES}" \
+  log_train_metrics_on_step=True \
   num_sanity_val_steps="${NUM_SANITY_VAL_STEPS}"
 
 end_ts=$(date +%s)

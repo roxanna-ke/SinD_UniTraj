@@ -4,7 +4,7 @@
 #SBATCH --error=/home/%u/projects/SinD_UniTraj/logs/%x-%j.err
 #SBATCH --partition=gpu
 #SBATCH --nodes=1
-#SBATCH --ntasks=2
+#SBATCH --ntasks-per-node=2
 #SBATCH --time=30:00:00
 #SBATCH --cpus-per-task=8
 #SBATCH --mem=64G
