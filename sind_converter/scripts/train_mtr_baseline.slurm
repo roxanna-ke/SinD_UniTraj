@@ -105,6 +105,7 @@ srun python unitraj/train.py \
   method.train_batch_size="${TRAIN_BATCH_SIZE}" \
   method.eval_batch_size="${EVAL_BATCH_SIZE}" \
   limit_val_batches="${LIMIT_VAL_BATCHES}" \
+  log_train_metrics_on_step=True \
   num_sanity_val_steps="${NUM_SANITY_VAL_STEPS}" \
   full_validate_after_fit=True \
   full_validate_limit_val_batches="${FULL_VALIDATE_LIMIT_VAL_BATCHES}"
