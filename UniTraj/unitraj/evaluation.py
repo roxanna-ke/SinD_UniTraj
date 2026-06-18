@@ -34,9 +34,11 @@ def evaluation(cfg):
         val_set, batch_size=eval_batch_size, num_workers=cfg.load_num_workers, shuffle=False, drop_last=False,
         collate_fn=val_set.collate_fn)
 
+    wandb_project = os.environ.get("WANDB_PROJECT", cfg.get("wandb_project", "SinD_UniTraj"))
+
     trainer = pl.Trainer(
         inference_mode=True,
-        logger=None if cfg.debug else WandbLogger(project="unitraj", name=cfg.exp_name),
+        logger=None if cfg.debug else WandbLogger(project=wandb_project, name=cfg.exp_name),
         devices=1,
         accelerator="cpu" if cfg.debug else "gpu",
         profiler="simple",

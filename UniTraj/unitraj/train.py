@@ -54,9 +54,12 @@ def train(cfg):
 
     use_ddp = (not cfg.debug) and len(cfg.devices) > 1
 
+    wandb_project = os.environ.get("WANDB_PROJECT", cfg.get("wandb_project", "SinD_UniTraj"))
+    logger = None if cfg.debug else WandbLogger(project=wandb_project, name=cfg.exp_name, id=cfg.exp_name)
+
     trainer = pl.Trainer(
         max_epochs=cfg.method.max_epochs,
-        logger=None if cfg.debug else WandbLogger(project="unitraj", name=cfg.exp_name, id=cfg.exp_name),
+        logger=logger,
         devices=1 if cfg.debug else cfg.devices,
         gradient_clip_val=cfg.method.grad_clip_norm,
         # accumulate_grad_batches=cfg.method.Trainer.accumulate_grad_batches,
@@ -73,10 +76,24 @@ def train(cfg):
     # automatically resume training
     if cfg.ckpt_path is None and not cfg.debug:
         # Pattern to match all .ckpt files in the base_path recursively
-        search_pattern = os.path.join('./unitraj', cfg.exp_name, '**', '*.ckpt')
+        search_pattern = os.path.join('./unitraj_ckpt', cfg.exp_name, '**', '*.ckpt')
         cfg.ckpt_path = find_latest_checkpoint(search_pattern)
 
     trainer.fit(model=model, train_dataloaders=train_loader, val_dataloaders=val_loader, ckpt_path=cfg.ckpt_path)
+
+    if cfg.get('full_validate_after_fit', False):
+        validate_ckpt_path = checkpoint_callback.best_model_path or cfg.ckpt_path
+        print(f"Running full validation after fit with checkpoint: {validate_ckpt_path or 'current model'}")
+        full_val_trainer = pl.Trainer(
+            logger=logger,
+            devices=1 if cfg.debug else cfg.devices,
+            accelerator="cpu" if cfg.debug else "gpu",
+            strategy="ddp" if use_ddp else "auto",
+            limit_val_batches=cfg.get('full_validate_limit_val_batches', 1.0),
+            num_sanity_val_steps=0,
+            log_every_n_steps=1,
+        )
+        full_val_trainer.validate(model=model, dataloaders=val_loader, ckpt_path=validate_ckpt_path or None)
 
 
 if __name__ == '__main__':
