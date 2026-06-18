@@ -21,10 +21,14 @@ TRAIN_DATA_PATH="${TRAIN_DATA_PATH:-${SCRATCH_ROOT}/splits/record_level/train/si
 VAL_DATA_PATH="${VAL_DATA_PATH:-${SCRATCH_ROOT}/splits/record_level/test/sind}"
 EXP_NAME="${EXP_NAME:-sind_MTR_smoke}"
 MAX_DATA_NUM="${MAX_DATA_NUM:-1024}"
+MAX_VAL_DATA_NUM="${MAX_VAL_DATA_NUM:-1024}"
 MAX_EPOCHS="${MAX_EPOCHS:-1}"
-LOAD_NUM_WORKERS="${LOAD_NUM_WORKERS:-0}"
+LOAD_NUM_WORKERS="${LOAD_NUM_WORKERS:-2}"
 TRAIN_BATCH_SIZE="${TRAIN_BATCH_SIZE:-16}"
 EVAL_BATCH_SIZE="${EVAL_BATCH_SIZE:-16}"
+LIMIT_TRAIN_BATCHES="${LIMIT_TRAIN_BATCHES:-4}"
+LIMIT_VAL_BATCHES="${LIMIT_VAL_BATCHES:-4}"
+NUM_SANITY_VAL_STEPS="${NUM_SANITY_VAL_STEPS:-0}"
 DEVICES="${DEVICES:-[0]}"
 
 if [ ! -f "${VENV_DIR}/bin/activate" ]; then
@@ -68,19 +72,23 @@ echo "[info] train_data_path=${TRAIN_DATA_PATH}"
 echo "[info] val_data_path=${VAL_DATA_PATH}"
 echo "[info] exp_name=${EXP_NAME}"
 echo "[info] max_data_num=${MAX_DATA_NUM}"
+echo "[info] max_val_data_num=${MAX_VAL_DATA_NUM}"
 echo "[info] max_epochs=${MAX_EPOCHS}"
 echo "[info] load_num_workers=${LOAD_NUM_WORKERS}"
 echo "[info] train_batch_size=${TRAIN_BATCH_SIZE}"
 echo "[info] eval_batch_size=${EVAL_BATCH_SIZE}"
+echo "[info] limit_train_batches=${LIMIT_TRAIN_BATCHES}"
+echo "[info] limit_val_batches=${LIMIT_VAL_BATCHES}"
+echo "[info] num_sanity_val_steps=${NUM_SANITY_VAL_STEPS}"
 python --version
 which python
 
-srun python -c "import torch; print('torch', torch.__version__, 'cuda', torch.version.cuda, 'available', torch.cuda.is_available()); print(torch.cuda.get_device_name(0) if torch.cuda.is_available() else 'no cuda')"
-srun python -c "from unitraj.models.mtr.ops.attention import attention_cuda; from unitraj.models.mtr.ops.knn import knn_cuda; print('MTR CUDA ops import OK')"
+python -c "import torch; print('torch', torch.__version__, 'cuda', torch.version.cuda, 'available', torch.cuda.is_available()); print(torch.cuda.get_device_name(0) if torch.cuda.is_available() else 'no cuda')"
+python -c "from unitraj.models.mtr.ops.attention import attention_cuda; from unitraj.models.mtr.ops.knn import knn_cuda; print('MTR CUDA ops import OK')"
 
 start_ts=$(date +%s)
 
-srun python unitraj/train.py \
+python unitraj/train.py \
   method=MTR \
   debug=False \
   exp_name="${EXP_NAME}" \
@@ -91,11 +99,15 @@ srun python unitraj/train.py \
   "train_data_path=[${TRAIN_DATA_PATH}]" \
   "val_data_path=[${VAL_DATA_PATH}]" \
   "max_data_num=[${MAX_DATA_NUM}]" \
+  max_val_data_num="${MAX_VAL_DATA_NUM}" \
   "starting_frame=[0]" \
   load_num_workers="${LOAD_NUM_WORKERS}" \
   method.max_epochs="${MAX_EPOCHS}" \
   method.train_batch_size="${TRAIN_BATCH_SIZE}" \
-  method.eval_batch_size="${EVAL_BATCH_SIZE}"
+  method.eval_batch_size="${EVAL_BATCH_SIZE}" \
+  limit_train_batches="${LIMIT_TRAIN_BATCHES}" \
+  limit_val_batches="${LIMIT_VAL_BATCHES}" \
+  num_sanity_val_steps="${NUM_SANITY_VAL_STEPS}"
 
 end_ts=$(date +%s)
 echo "[done] MTR smoke training completed in $((end_ts - start_ts)) seconds"
