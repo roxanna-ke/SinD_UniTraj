@@ -5,7 +5,7 @@
 #SBATCH --partition=gpu
 #SBATCH --qos=debug
 #SBATCH --nodes=1
-#SBATCH --ntasks=1
+#SBATCH --ntasks=2
 #SBATCH --time=01:00:00
 #SBATCH --cpus-per-task=4
 #SBATCH --mem=64G
@@ -19,7 +19,7 @@ SCRATCH_ROOT="${SCRATCH_ROOT:-/scratch/izar/ke/sind_cache}"
 CACHE_PATH="${CACHE_PATH:-${SCRATCH_ROOT}/unitraj_cache/MTR}"
 TRAIN_DATA_PATH="${TRAIN_DATA_PATH:-${SCRATCH_ROOT}/splits/record_level/train/sind}"
 VAL_DATA_PATH="${VAL_DATA_PATH:-${SCRATCH_ROOT}/splits/record_level/test/sind}"
-EXP_NAME="${EXP_NAME:-sind_MTR_smoke}"
+EXP_NAME="${EXP_NAME:-sind_MTR_smoke_${SLURM_JOB_ID:-manual}}"
 MAX_DATA_NUM="${MAX_DATA_NUM:-2048}"
 MAX_VAL_DATA_NUM="${MAX_VAL_DATA_NUM:-1024}"
 MAX_EPOCHS="${MAX_EPOCHS:-1}"
@@ -88,7 +88,7 @@ python -c "from unitraj.models.mtr.ops.attention import attention_cuda; from uni
 
 start_ts=$(date +%s)
 
-python unitraj/train.py \
+srun python unitraj/train.py \
   method=MTR \
   debug=False \
   exp_name="${EXP_NAME}" \
