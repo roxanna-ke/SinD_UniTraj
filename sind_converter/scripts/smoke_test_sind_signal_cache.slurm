@@ -1,7 +1,7 @@
 #!/bin/bash
 #SBATCH --job-name=sind_signal_cache_smoke
-#SBATCH --output=/home/%u/projects/SinD_UniTraj/logs/%x-%j.out
-#SBATCH --error=/home/%u/projects/SinD_UniTraj/logs/%x-%j.err
+#SBATCH --output=/home/%u/projects/SinD_UniTraj_signal/logs/%x-%j.out
+#SBATCH --error=/home/%u/projects/SinD_UniTraj_signal/logs/%x-%j.err
 #SBATCH --partition=gpu
 #SBATCH --qos=debug
 #SBATCH --nodes=1
@@ -14,7 +14,7 @@
 
 set -euo pipefail
 
-PROJECT_ROOT="${PROJECT_ROOT:-${SLURM_SUBMIT_DIR:-/home/ke/projects/SinD_UniTraj}}"
+PROJECT_ROOT="${PROJECT_ROOT:-${SLURM_SUBMIT_DIR:-/home/ke/projects/SinD_UniTraj_signal}}"
 VENV_DIR="${VENV_DIR:-$HOME/venvs/mtr-izar}"
 DATA_ROOT="${DATA_ROOT:-/scratch/izar/ke/sind_raw}"
 MAP_FALLBACK_ROOT="${MAP_FALLBACK_ROOT:-${DATA_ROOT}}"

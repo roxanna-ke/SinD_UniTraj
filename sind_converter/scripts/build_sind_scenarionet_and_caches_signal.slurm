@@ -1,18 +1,18 @@
 #!/bin/bash
 #SBATCH --job-name=sind_signal_scenarionet_cache
-#SBATCH --output=/home/%u/projects/SinD_UniTraj/logs/%x-%j.out
-#SBATCH --error=/home/%u/projects/SinD_UniTraj/logs/%x-%j.err
+#SBATCH --output=/home/%u/projects/SinD_UniTraj_signal/logs/%x-%j.out
+#SBATCH --error=/home/%u/projects/SinD_UniTraj_signal/logs/%x-%j.err
 #SBATCH --partition=gpu
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --time=4:00:00
 #SBATCH --cpus-per-task=4
-#SBATCH --mem=32G
+#SBATCH --mem=16G
 #SBATCH --gres=gpu:1
 
 set -euo pipefail
 
-PROJECT_ROOT="${PROJECT_ROOT:-${SLURM_SUBMIT_DIR:-/home/ke/projects/SinD_UniTraj}}"
+PROJECT_ROOT="${PROJECT_ROOT:-${SLURM_SUBMIT_DIR:-/home/ke/projects/SinD_UniTraj_signal}}"
 VENV_DIR="${VENV_DIR:-$HOME/venvs/mtr-izar}"
 DATA_ROOT="${DATA_ROOT:-/scratch/izar/ke/sind_raw}"
 MAP_FALLBACK_ROOT="${MAP_FALLBACK_ROOT:-${DATA_ROOT}}"
