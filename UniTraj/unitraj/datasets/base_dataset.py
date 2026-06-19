@@ -99,6 +99,7 @@ class BaseDataset(Dataset):
                         file_list = dict(data_list[:data_usage_this_dataset])
 
             print('Loaded {} samples from {}'.format(len(file_list), data_path))
+            self._validate_cache_schema(file_list)
             self.data_loaded.update(file_list)
 
             if self.config['store_data_in_memory']:
@@ -120,6 +121,22 @@ class BaseDataset(Dataset):
 
     def _light_feature_dim(self):
         return 9 if self._use_lane_control_state_in_map_tokens() else 0
+
+    def _use_traffic_light_tokens(self):
+        return bool(self.config.get('use_traffic_light_tokens', False))
+
+    def _traffic_light_history_len(self):
+        return min(int(self.config.get('traffic_light_history_len', self.config['past_len'])), self.config['past_len'])
+
+    def _light_state_feature_dim(self):
+        return max(traffic_light_state_to_int.values()) + 1
+
+    def _light_token_feature_dim(self):
+        light_state_dim = self._light_state_feature_dim()
+        return light_state_dim + 1 + 1 + 1 + light_state_dim
+
+    def _max_num_lights(self):
+        return int(self.config.get('max_num_lights', 32))
 
     def _center_frame_lane_states(self, traffic_lights, current_time_index):
         lane_states = {}
@@ -175,6 +192,124 @@ class BaseDataset(Dataset):
                 del output
 
         return file_list
+
+    def _validate_cache_schema(self, file_list):
+        if not file_list:
+            return
+        file_groups = defaultdict(list)
+        for group_name, file_info in file_list.items():
+            file_groups[file_info['h5_path']].append(group_name)
+
+        required_fields = {'light_token_features', 'light_token_mask', 'light_token_valid_mask', 'light_token_pos'}
+        schema_flags = set()
+        for h5_path, group_names in file_groups.items():
+            with h5py.File(h5_path, 'r') as handle:
+                schema_flags.add(required_fields.issubset(set(handle[group_names[0]].keys())))
+
+        if len(schema_flags) > 1:
+            raise ValueError('Mixed traffic-light cache schemas detected in one dataset directory; rebuild the cache directory with a single schema.')
+
+        has_light_token_schema = next(iter(schema_flags))
+        if self._use_traffic_light_tokens() and not has_light_token_schema:
+            raise ValueError(
+                'Traffic-light token augmentation was requested, but this cache was built without light_token_* fields. '
+                'Rebuild the SinD cache with the updated dataset code.'
+            )
+
+    def _empty_light_tokens(self, sample_num):
+        history_len = self._traffic_light_history_len()
+        max_num_lights = self._max_num_lights()
+        feature_dim = self._light_token_feature_dim()
+        return (
+            np.zeros((sample_num, max_num_lights, history_len, feature_dim), dtype=np.float32),
+            np.zeros((sample_num, max_num_lights), dtype=bool),
+            np.zeros((sample_num, max_num_lights, history_len), dtype=bool),
+            np.zeros((sample_num, max_num_lights, 3), dtype=np.float32),
+        )
+
+    def _build_light_tokens(self, dynamic_map_infos, center_objects):
+        sample_num = center_objects.shape[0]
+        history_len = self._traffic_light_history_len()
+        max_num_lights = self._max_num_lights()
+        feature_dim = self._light_token_feature_dim()
+        light_state_dim = self._light_state_feature_dim()
+
+        if not dynamic_map_infos['state']:
+            return self._empty_light_tokens(sample_num)
+
+        light_features = []
+        light_valid_masks = []
+        light_positions = []
+        unknown_state_id = traffic_light_state_to_int[MetaDriveType.LANE_STATE_UNKNOWN]
+
+        for states_array, stop_points_array in zip(dynamic_map_infos['state'], dynamic_map_infos['stop_point']):
+            raw_states = np.asarray(states_array[0][:history_len], dtype=object)
+            if raw_states.size == 0:
+                continue
+            if raw_states.shape[0] < history_len:
+                raw_states = np.pad(raw_states, (0, history_len - raw_states.shape[0]), constant_values=MetaDriveType.LANE_STATE_UNKNOWN)
+
+            stop_points = np.asarray(stop_points_array[0][:history_len], dtype=np.float32)
+            if stop_points.shape[0] == 0:
+                continue
+            if stop_points.shape[0] < history_len:
+                stop_points = np.pad(stop_points, ((0, history_len - stop_points.shape[0]), (0, 0)))
+
+            state_ids = np.array([traffic_light_state_to_int[state] for state in raw_states], dtype=np.int64)
+            state_one_hot = np.eye(light_state_dim, dtype=np.float32)[state_ids]
+            valid_mask = np.ones((history_len,), dtype=bool)
+            unknown_mask = (state_ids == unknown_state_id).astype(np.float32)
+            known_state_ids = state_ids[state_ids != unknown_state_id]
+            if known_state_ids.size > 0:
+                last_valid_state = np.eye(light_state_dim, dtype=np.float32)[known_state_ids[-1]]
+            else:
+                last_valid_state = np.eye(light_state_dim, dtype=np.float32)[unknown_state_id]
+            change_flag = float(len(np.unique(known_state_ids)) > 1)
+            change_column = np.full((history_len, 1), change_flag, dtype=np.float32)
+            light_features.append(
+                np.concatenate(
+                    (
+                        state_one_hot,
+                        valid_mask[:, None].astype(np.float32),
+                        unknown_mask[:, None],
+                        change_column,
+                        np.repeat(last_valid_state[None, :], history_len, axis=0),
+                    ),
+                    axis=-1,
+                ).astype(np.float32)
+            )
+            light_valid_masks.append(valid_mask)
+            light_positions.append(stop_points[0])
+
+        if not light_features:
+            return self._empty_light_tokens(sample_num)
+
+        light_features = np.asarray(light_features, dtype=np.float32)
+        light_valid_masks = np.asarray(light_valid_masks, dtype=bool)
+        light_positions = np.asarray(light_positions, dtype=np.float32)
+        num_lights = light_features.shape[0]
+
+        token_features = np.zeros((sample_num, max_num_lights, history_len, feature_dim), dtype=np.float32)
+        token_valid_masks = np.zeros((sample_num, max_num_lights, history_len), dtype=bool)
+        token_masks = np.zeros((sample_num, max_num_lights), dtype=bool)
+        token_positions = np.zeros((sample_num, max_num_lights, 3), dtype=np.float32)
+
+        distances = np.linalg.norm(center_objects[:, None, 0:2] - light_positions[None, :, 0:2], axis=-1)
+        topk_count = min(max_num_lights, num_lights)
+        topk_indices = np.argsort(distances, axis=1)[:, :topk_count]
+
+        token_features[:, :topk_count] = light_features[topk_indices]
+        token_valid_masks[:, :topk_count] = light_valid_masks[topk_indices]
+        token_masks[:, :topk_count] = True
+        token_positions[:, :topk_count] = light_positions[topk_indices]
+
+        token_positions[:, :, 0:3] -= center_objects[:, None, 0:3]
+        token_positions[:, :, 0:2] = common_utils.rotate_points_along_z(
+            points=token_positions[:, :, 0:2],
+            angle=-center_objects[:, 6]
+        )
+        token_positions[~token_masks] = 0
+        return token_features, token_masks, token_valid_masks, token_positions
 
     def preprocess(self, scenario):
 
@@ -466,6 +601,12 @@ class BaseDataset(Dataset):
         ret_dict['map_polylines'] = map_polylines_data
         ret_dict['map_polylines_mask'] = map_polylines_mask.astype(bool)
         ret_dict['map_polylines_center'] = map_polylines_center
+        (
+            ret_dict['light_token_features'],
+            ret_dict['light_token_mask'],
+            ret_dict['light_token_valid_mask'],
+            ret_dict['light_token_pos'],
+        ) = self._build_light_tokens(info['dynamic_map_infos'], center_objects)
 
         # masking out unused attributes to Zero
         masked_attributes = self.config['masked_attributes']
