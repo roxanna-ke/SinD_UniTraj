@@ -1,66 +1,57 @@
 {
   "city": "Xi_an",
-  "source_csv": "output/light_2/traffic_light_channel_mapping.csv",
   "channel_groups": [
     {
-      "group_id": "group_traffic_light_1",
+      "group_id": "phase_NS",
       "traffic_light_channels": [
         "Traffic light 1"
       ],
       "movements": [
         {
           "stopline_id": "-103736",
-          "movement": "left",
-          "support": 4
+          "movement": "left"
         },
         {
           "stopline_id": "-103736",
-          "movement": "straight",
-          "support": 3
+          "movement": "straight"
         },
         {
           "stopline_id": "-103745",
-          "movement": "left",
-          "support": 6
+          "movement": "left"
         },
         {
           "stopline_id": "-103745",
-          "movement": "straight",
-          "support": 5
-        },
-        {
-          "stopline_id": "-103753",
-          "movement": "left",
-          "support": 5
+          "movement": "straight"
         }
       ],
-      "confidence": "medium",
-      "source": "candidate_from_traffic_light_channel_mapping_csv"
+      "confidence": "high",
+      "source": "opposing_arm_two_phase_model"
     },
     {
-      "group_id": "group_traffic_light_2",
+      "group_id": "phase_EW",
       "traffic_light_channels": [
         "Traffic light 2"
       ],
       "movements": [
         {
-          "stopline_id": "-103736",
-          "movement": "straight",
-          "support": 2
+          "stopline_id": "-103740",
+          "movement": "left"
         },
         {
           "stopline_id": "-103740",
-          "movement": "left",
-          "support": 6
+          "movement": "straight"
         },
         {
           "stopline_id": "-103753",
-          "movement": "left",
-          "support": 8
+          "movement": "left"
+        },
+        {
+          "stopline_id": "-103753",
+          "movement": "straight"
         }
       ],
-      "confidence": "medium",
-      "source": "candidate_from_traffic_light_channel_mapping_csv"
+      "confidence": "high",
+      "source": "opposing_arm_two_phase_model"
     }
   ]
 }
