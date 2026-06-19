@@ -6,7 +6,7 @@ use_map_image: False
 use_map_lanes: True
 num_modes: 6
 num_agent_feature: 39
-num_map_feature: 29
+num_map_feature: 38
 hidden_size: 256
 num_encoder_layers: 2
 num_decoder_layers: 8
@@ -40,4 +40,3 @@ manually_split_lane: False
 point_sampled_interval: 1
 num_points_each_polyline: 20
 vector_break_dist_thresh: 1.0
-

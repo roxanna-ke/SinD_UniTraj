@@ -1,0 +1,66 @@
+{
+  "city": "Xi_an",
+  "source_csv": "output/light_2/traffic_light_channel_mapping.csv",
+  "channel_groups": [
+    {
+      "group_id": "group_traffic_light_1",
+      "traffic_light_channels": [
+        "Traffic light 1"
+      ],
+      "movements": [
+        {
+          "stopline_id": "-103736",
+          "movement": "left",
+          "support": 4
+        },
+        {
+          "stopline_id": "-103736",
+          "movement": "straight",
+          "support": 3
+        },
+        {
+          "stopline_id": "-103745",
+          "movement": "left",
+          "support": 6
+        },
+        {
+          "stopline_id": "-103745",
+          "movement": "straight",
+          "support": 5
+        },
+        {
+          "stopline_id": "-103753",
+          "movement": "left",
+          "support": 5
+        }
+      ],
+      "confidence": "medium",
+      "source": "candidate_from_traffic_light_channel_mapping_csv"
+    },
+    {
+      "group_id": "group_traffic_light_2",
+      "traffic_light_channels": [
+        "Traffic light 2"
+      ],
+      "movements": [
+        {
+          "stopline_id": "-103736",
+          "movement": "straight",
+          "support": 2
+        },
+        {
+          "stopline_id": "-103740",
+          "movement": "left",
+          "support": 6
+        },
+        {
+          "stopline_id": "-103753",
+          "movement": "left",
+          "support": 8
+        }
+      ],
+      "confidence": "medium",
+      "source": "candidate_from_traffic_light_channel_mapping_csv"
+    }
+  ]
+}

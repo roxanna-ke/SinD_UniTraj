@@ -9,7 +9,8 @@ import pandas as pd
 from metadrive.scenario import ScenarioDescription as SD
 from metadrive.type import MetaDriveType
 
-from sind_converter.lights.standardize import dynamic_map_states_for_window
+from sind_converter.lights.bindings import LaneSignalBinding
+from sind_converter.lights.runtime_signal_states import dynamic_map_states_for_window
 
 
 DEFAULT_VEHICLE_HEIGHT = 1.5
@@ -34,6 +35,7 @@ class ScenarioWindow:
     map_features: dict[str, dict[str, Any]]
     lane_centers: dict[str, np.ndarray]
     traffic_light: pd.DataFrame | None
+    traffic_light_bindings: tuple[LaneSignalBinding, ...]
     past_len: int
     future_len: int
 
@@ -70,6 +72,7 @@ def generate_windows(
     map_features: dict[str, dict[str, Any]],
     lane_centers: dict[str, np.ndarray],
     traffic_light: pd.DataFrame | None,
+    traffic_light_bindings: tuple[LaneSignalBinding, ...],
     past_len: int,
     future_len: int,
     stride: int,
@@ -128,6 +131,7 @@ def generate_windows(
                 map_features=map_features,
                 lane_centers=lane_centers,
                 traffic_light=traffic_light,
+                traffic_light_bindings=traffic_light_bindings,
                 past_len=past_len,
                 future_len=future_len,
             )
@@ -202,7 +206,11 @@ def convert_window_to_scenario(window: ScenarioWindow, dataset_version: str, dat
 
     sdc_id = window.target_ids[0]
     scenario[SD.TRACKS] = tracks
-    scenario[SD.DYNAMIC_MAP_STATES] = dynamic_map_states_for_window(window.traffic_light, window.lane_centers, timestamps_ms)
+    scenario[SD.DYNAMIC_MAP_STATES] = dynamic_map_states_for_window(
+        window.traffic_light,
+        window.traffic_light_bindings,
+        timestamps_ms,
+    )
     scenario[SD.MAP_FEATURES] = window.map_features
     tracks_to_predict = {}
     for target_id in window.target_ids:

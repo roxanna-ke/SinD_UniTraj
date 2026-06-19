@@ -14,13 +14,14 @@ from tqdm import tqdm
 from unitraj.datasets import common_utils
 from unitraj.datasets.common_utils import get_polyline_dir, find_true_segments, generate_mask, is_ddp, \
     get_kalman_difficulty, get_trajectory_type, interpolate_polyline
-from unitraj.datasets.types import object_type, polyline_type
+from unitraj.datasets.types import object_type, polyline_type, traffic_light_state_to_int
 from unitraj.utils.visualization import check_loaded_data
 from functools import lru_cache
 
 default_value = 0
 object_type = defaultdict(lambda: default_value, object_type)
 polyline_type = defaultdict(lambda: default_value, polyline_type)
+traffic_light_state_to_int = defaultdict(lambda: default_value, traffic_light_state_to_int)
 
 
 class BaseDataset(Dataset):
@@ -111,6 +112,27 @@ class BaseDataset(Dataset):
         self.data_loaded_keys = list(self.data_loaded.keys())
         print('Data loaded')
 
+    def _use_lane_control_state_in_map_tokens(self):
+        return bool(self.config.get('use_lane_control_state_in_map_tokens', True))
+
+    def _map_polyline_feature_dim(self):
+        return 38 if self._use_lane_control_state_in_map_tokens() else 29
+
+    def _light_feature_dim(self):
+        return 9 if self._use_lane_control_state_in_map_tokens() else 0
+
+    def _center_frame_lane_states(self, traffic_lights, current_time_index):
+        lane_states = {}
+        for signal in traffic_lights.values():
+            lane_id = str(signal.get('lane', ''))
+            if not lane_id:
+                continue
+            states = signal.get('state', {}).get('object_state', [])
+            if not states:
+                continue
+            lane_states[lane_id] = traffic_light_state_to_int[states[min(current_time_index, len(states) - 1)]]
+        return lane_states
+
     def process_data_chunk(self, worker_index):
         with open(os.path.join('tmp', '{}.pkl'.format(worker_index)), 'rb') as f:
             data_chunk = pickle.load(f)
@@ -200,6 +222,8 @@ class BaseDataset(Dataset):
         track_infos['trajs'][..., -1] *= frequency_mask[np.newaxis]
         scenario['metadata']['ts'] = scenario['metadata']['ts'][:total_steps]
 
+        lane_signal_states = self._center_frame_lane_states(traffic_lights, past_length - 1)
+
         # x,y,z,type
         map_infos = {
             'lane': [],
@@ -219,6 +243,8 @@ class BaseDataset(Dataset):
             cur_info = {'id': k}
             cur_info['type'] = v['type']
             if polyline_type_ in [1, 2, 3]:
+                cur_info['light_state'] = lane_signal_states.get(k, traffic_light_state_to_int[None])
+                cur_info['has_traffic_light'] = int(k in lane_signal_states)
                 cur_info['speed_limit_mph'] = v.get('speed_limit_mph', None)
                 cur_info['interpolating'] = v.get('interpolating', None)
                 cur_info['entry_lanes'] = v.get('entry_lanes', None)
@@ -271,9 +297,15 @@ class BaseDataset(Dataset):
                 cur_polyline_dir = get_polyline_dir(polyline)
                 type_array = np.zeros([polyline.shape[0], 1])
                 type_array[:] = polyline_type_
-                cur_polyline = np.concatenate((polyline, cur_polyline_dir, type_array), axis=-1)
+                if self._use_lane_control_state_in_map_tokens():
+                    light_array = np.zeros([polyline.shape[0], 1], dtype=np.float32)
+                    light_array[:] = cur_info.get('light_state', traffic_light_state_to_int[None])
+                    cur_polyline = np.concatenate((polyline, cur_polyline_dir, light_array, type_array), axis=-1)
+                else:
+                    cur_polyline = np.concatenate((polyline, cur_polyline_dir, type_array), axis=-1)
             except:
-                cur_polyline = np.zeros((0, 7), dtype=np.float32)
+                empty_dim = 8 if self._use_lane_control_state_in_map_tokens() else 7
+                cur_polyline = np.zeros((0, empty_dim), dtype=np.float32)
             polylines.append(cur_polyline)
             cur_info['polyline_index'] = (point_cnt, point_cnt + len(cur_polyline))
             point_cnt += len(cur_polyline)
@@ -281,7 +313,8 @@ class BaseDataset(Dataset):
         try:
             polylines = np.concatenate(polylines, axis=0).astype(np.float32)
         except:
-            polylines = np.zeros((0, 7), dtype=np.float32)
+            empty_dim = 8 if self._use_lane_control_state_in_map_tokens() else 7
+            polylines = np.zeros((0, empty_dim), dtype=np.float32)
         map_infos['all_polylines'] = polylines
 
         dynamic_map_infos = {
@@ -423,7 +456,10 @@ class BaseDataset(Dataset):
                 map_polylines_data, map_polylines_mask, map_polylines_center = self.get_map_data(
                     center_objects=center_objects, map_infos=info['map_infos'])
         else:
-            map_polylines_data = np.zeros((sample_num, self.config['max_num_roads'], 20, 29), dtype=np.float32)
+            map_polylines_data = np.zeros(
+                (sample_num, self.config['max_num_roads'], 20, self._map_polyline_feature_dim()),
+                dtype=np.float32,
+            )
             map_polylines_mask = np.zeros((sample_num, self.config['max_num_roads'], 20), dtype=bool)
             map_polylines_center = np.zeros((sample_num, self.config['max_num_roads'], 3), dtype=np.float32)
 
@@ -749,6 +785,7 @@ class BaseDataset(Dataset):
         map_range = self.config.get('map_range', None)
         center_offset = self.config.get('center_offset_of_map', (30.0, 0))
         num_agents = all_polylines.shape[0]
+        point_dim = all_polylines.shape[-1]
         polyline_list = []
         polyline_mask_list = []
 
@@ -769,7 +806,7 @@ class BaseDataset(Dataset):
                     segment_index_list.append(find_true_segments(in_range_mask[i]))
                 max_segments = max([len(x) for x in segment_index_list])
 
-                segment_list = np.zeros([num_agents, max_segments, max_points_per_lane, 7], dtype=np.float32)
+                segment_list = np.zeros([num_agents, max_segments, max_points_per_lane, point_dim], dtype=np.float32)
                 segment_mask_list = np.zeros([num_agents, max_segments, max_points_per_lane], dtype=np.int32)
 
                 for i in range(polyline_segment.shape[0]):
@@ -789,8 +826,9 @@ class BaseDataset(Dataset):
 
                 polyline_list.append(segment_list)
                 polyline_mask_list.append(segment_mask_list)
-        if len(polyline_list) == 0: return np.zeros((num_agents, 0, max_points_per_lane, 29)), np.zeros(
-            (num_agents, 0, max_points_per_lane)), np.zeros((num_agents, 0, 3), dtype=np.float32)
+        if len(polyline_list) == 0:
+            return np.zeros((num_agents, 0, max_points_per_lane, self._map_polyline_feature_dim())), np.zeros(
+                (num_agents, 0, max_points_per_lane)), np.zeros((num_agents, 0, 3), dtype=np.float32)
         batch_polylines = np.concatenate(polyline_list, axis=1)
         batch_polylines_mask = np.concatenate(polyline_mask_list, axis=1)
 
@@ -822,11 +860,17 @@ class BaseDataset(Dataset):
         xy_pos_pre[:, :, 0, :] = xy_pos_pre[:, :, 1, :]
 
         map_types = map_polylines[:, :, :, -1]
-        map_polylines = map_polylines[:, :, :, :-1]
+        if self._use_lane_control_state_in_map_tokens():
+            light_types = map_polylines[:, :, :, -2]
+            map_polylines = map_polylines[:, :, :, :-2]
+            light_types = np.eye(self._light_feature_dim())[light_types.astype(int)]
+        else:
+            map_polylines = map_polylines[:, :, :, :-1]
+            light_types = np.zeros(map_polylines.shape[:3] + (0,), dtype=np.float32)
         # one-hot encoding for map types, 14 types in total, use 20 for reserved types
         map_types = np.eye(20)[map_types.astype(int)]
 
-        map_polylines = np.concatenate((map_polylines, xy_pos_pre, map_types), axis=-1)
+        map_polylines = np.concatenate((map_polylines, xy_pos_pre, light_types, map_types), axis=-1)
         map_polylines[map_polylines_mask == 0] = 0
 
         return map_polylines, map_polylines_mask, map_polylines_center
@@ -951,13 +995,21 @@ class BaseDataset(Dataset):
         map_polylines_center = temp_sum / np.clip(map_polylines_mask.sum(axis=-1)[:, :, np.newaxis].astype(float),
                                                   a_min=1.0, a_max=None)
 
-        map_types = map_polylines[:, :, :, 6]
-        xy_pos_pre = map_polylines[:, :, :, 7:]
-        map_polylines = map_polylines[:, :, :, :6]
+        if self._use_lane_control_state_in_map_tokens():
+            light_types = map_polylines[:, :, :, 6]
+            map_types = map_polylines[:, :, :, 7]
+            xy_pos_pre = map_polylines[:, :, :, 8:]
+            map_polylines = map_polylines[:, :, :, :6]
+            light_types = np.eye(self._light_feature_dim())[light_types.astype(int)]
+        else:
+            map_types = map_polylines[:, :, :, 6]
+            xy_pos_pre = map_polylines[:, :, :, 7:]
+            map_polylines = map_polylines[:, :, :, :6]
+            light_types = np.zeros(map_polylines.shape[:3] + (0,), dtype=np.float32)
         # one-hot encoding for map types, 14 types in total, use 20 for reserved types
         map_types = np.eye(20)[map_types.astype(int)]
 
-        map_polylines = np.concatenate((map_polylines, xy_pos_pre, map_types), axis=-1)
+        map_polylines = np.concatenate((map_polylines, xy_pos_pre, light_types, map_types), axis=-1)
 
         return map_polylines, map_polylines_mask, map_polylines_center
 

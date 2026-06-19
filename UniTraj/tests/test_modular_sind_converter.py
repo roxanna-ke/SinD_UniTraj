@@ -96,6 +96,7 @@ def test_agent_state_uses_frame_id_alignment_when_timestamps_differ():
         map_features={},
         lane_centers={},
         traffic_light=None,
+        traffic_light_bindings=(),
         past_len=21,
         future_len=60,
         stride=81,

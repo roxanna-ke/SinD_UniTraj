@@ -1,0 +1,192 @@
+{
+  "city": "Changchun",
+  "lane_bindings": [
+    {
+      "stopline_id": "-106227",
+      "movement": "left",
+      "lane_ids": [
+        "lane_S_EX_1_to_W_EN_1"
+      ],
+      "stop_point": [
+        -18.742,
+        -20.659,
+        0.0
+      ],
+      "confidence": "medium",
+      "source": "candidate_from_map_geometry",
+      "notes": "source_arm=S"
+    },
+    {
+      "stopline_id": "-106227",
+      "movement": "right",
+      "lane_ids": [
+        "lane_S_EX_2_to_E_EN_2",
+        "lane_S_EX_3_to_E_EN_2"
+      ],
+      "stop_point": [
+        -15.662,
+        -20.5,
+        0.0
+      ],
+      "confidence": "medium",
+      "source": "candidate_from_map_geometry",
+      "notes": "source_arm=S"
+    },
+    {
+      "stopline_id": "-106227",
+      "movement": "straight",
+      "lane_ids": [
+        "lane_S_EX_1_to_N_EN_1",
+        "lane_S_EX_2_to_N_EN_2",
+        "lane_S_EX_3_to_N_EN_3"
+      ],
+      "stop_point": [
+        -19.61,
+        -2.952,
+        0.0
+      ],
+      "confidence": "medium",
+      "source": "candidate_from_map_geometry",
+      "notes": "source_arm=S"
+    },
+    {
+      "stopline_id": "-106228",
+      "movement": "left",
+      "lane_ids": [
+        "lane_E_EX_1_to_S_EN_1"
+      ],
+      "stop_point": [
+        -3.514,
+        -0.577,
+        0.0
+      ],
+      "confidence": "medium",
+      "source": "candidate_from_map_geometry",
+      "notes": "source_arm=E"
+    },
+    {
+      "stopline_id": "-106228",
+      "movement": "right",
+      "lane_ids": [
+        "lane_E_EX_2_to_N_EN_2",
+        "lane_E_EX_2_to_N_EN_3"
+      ],
+      "stop_point": [
+        -3.736,
+        4.164,
+        0.0
+      ],
+      "confidence": "medium",
+      "source": "candidate_from_map_geometry",
+      "notes": "source_arm=E"
+    },
+    {
+      "stopline_id": "-106228",
+      "movement": "straight",
+      "lane_ids": [
+        "lane_E_EX_1_to_W_EN_1",
+        "lane_E_EX_2_to_W_EN_2"
+      ],
+      "stop_point": [
+        -3.514,
+        -0.577,
+        0.0
+      ],
+      "confidence": "medium",
+      "source": "candidate_from_map_geometry",
+      "notes": "source_arm=E"
+    },
+    {
+      "stopline_id": "-106229",
+      "movement": "left",
+      "lane_ids": [
+        "lane_N_EX_1_to_E_EN_1"
+      ],
+      "stop_point": [
+        -23.572,
+        14.724,
+        0.0
+      ],
+      "confidence": "medium",
+      "source": "candidate_from_map_geometry",
+      "notes": "source_arm=N"
+    },
+    {
+      "stopline_id": "-106229",
+      "movement": "right",
+      "lane_ids": [
+        "lane_N_EX_2_to_W_EN_2"
+      ],
+      "stop_point": [
+        -32.589,
+        10.113,
+        0.0
+      ],
+      "confidence": "medium",
+      "source": "candidate_from_map_geometry",
+      "notes": "source_arm=N"
+    },
+    {
+      "stopline_id": "-106229",
+      "movement": "straight",
+      "lane_ids": [
+        "lane_N_EX_1_to_S_EN_1",
+        "lane_N_EX_2_to_S_EN_2"
+      ],
+      "stop_point": [
+        -23.572,
+        14.724,
+        0.0
+      ],
+      "confidence": "medium",
+      "source": "candidate_from_map_geometry",
+      "notes": "source_arm=N"
+    },
+    {
+      "stopline_id": "-106230",
+      "movement": "left",
+      "lane_ids": [
+        "lane_W_EX_1_to_N_EN_1"
+      ],
+      "stop_point": [
+        -39.54,
+        -5.352,
+        0.0
+      ],
+      "confidence": "medium",
+      "source": "candidate_from_map_geometry",
+      "notes": "source_arm=W"
+    },
+    {
+      "stopline_id": "-106230",
+      "movement": "right",
+      "lane_ids": [
+        "lane_W_EX_2_to_S_EN_2"
+      ],
+      "stop_point": [
+        -39.338,
+        -10.188,
+        0.0
+      ],
+      "confidence": "medium",
+      "source": "candidate_from_map_geometry",
+      "notes": "source_arm=W"
+    },
+    {
+      "stopline_id": "-106230",
+      "movement": "straight",
+      "lane_ids": [
+        "lane_W_EX_1_to_E_EN_1",
+        "lane_W_EX_2_to_E_EN_2"
+      ],
+      "stop_point": [
+        -21.457,
+        -4.608,
+        0.0
+      ],
+      "confidence": "medium",
+      "source": "candidate_from_map_geometry",
+      "notes": "source_arm=W"
+    }
+  ]
+}

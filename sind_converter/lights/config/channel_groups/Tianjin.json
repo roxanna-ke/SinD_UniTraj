@@ -1,0 +1,86 @@
+{
+  "city": "Tianjin",
+  "source_csv": "output/light_2/traffic_light_channel_mapping.csv",
+  "channel_groups": [
+    {
+      "group_id": "group_traffic_light_2",
+      "traffic_light_channels": [
+        "Traffic light 2"
+      ],
+      "movements": [
+        {
+          "stopline_id": "-124112",
+          "movement": "left",
+          "support": 5
+        },
+        {
+          "stopline_id": "-124112",
+          "movement": "straight",
+          "support": 23
+        }
+      ],
+      "confidence": "high",
+      "source": "manual_tianjin_four_channel_binding_from_light_2"
+    },
+    {
+      "group_id": "group_traffic_light_4",
+      "traffic_light_channels": [
+        "Traffic light 4"
+      ],
+      "movements": [
+        {
+          "stopline_id": "-124117",
+          "movement": "left",
+          "support": 3
+        },
+        {
+          "stopline_id": "-124117",
+          "movement": "straight",
+          "support": 14
+        }
+      ],
+      "confidence": "medium",
+      "source": "manual_tianjin_four_channel_binding_from_light_2"
+    },
+    {
+      "group_id": "group_traffic_light_6",
+      "traffic_light_channels": [
+        "Traffic light 6"
+      ],
+      "movements": [
+        {
+          "stopline_id": "-124127",
+          "movement": "left",
+          "support": 8
+        },
+        {
+          "stopline_id": "-124127",
+          "movement": "straight",
+          "support": 23
+        }
+      ],
+      "confidence": "high",
+      "source": "manual_tianjin_four_channel_binding_from_light_2"
+    },
+    {
+      "group_id": "group_traffic_light_8",
+      "traffic_light_channels": [
+        "Traffic light 8"
+      ],
+      "movements": [
+        {
+          "stopline_id": "-124159",
+          "movement": "left",
+          "support": 7
+        },
+        {
+          "stopline_id": "-124159",
+          "movement": "straight",
+          "support": 22
+        }
+      ],
+      "confidence": "high",
+      "source": "manual_tianjin_four_channel_binding_from_light_2"
+    }
+  ]
+}
