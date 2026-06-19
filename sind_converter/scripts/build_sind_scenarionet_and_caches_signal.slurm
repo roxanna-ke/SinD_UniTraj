@@ -29,9 +29,11 @@ TEST_CITIES="${TEST_CITIES:-}"
 STRIDE="${STRIDE:-40}"
 CHECK_SAMPLES="${CHECK_SAMPLES:-8}"
 DRY_RUN_SAMPLES="${DRY_RUN_SAMPLES:-2}"
+VERIFY_SCENARIOS="${VERIFY_SCENARIOS:-8}"
 MAX_RECORDS="${MAX_RECORDS:-}"
 MAX_SCENARIOS_PER_RECORD="${MAX_SCENARIOS_PER_RECORD:-}"
 CITIES="${CITIES:-}"
+METHODS="${METHODS:-MTR wayformer}"
 TRAINING_MAPPING_TABLE="${TRAINING_MAPPING_TABLE:-${PROJECT_ROOT}/osm_audit_four_cities/osm_training_mapping_table.csv}"
 
 if [ ! -f "${VENV_DIR}/bin/activate" ]; then
@@ -87,6 +89,7 @@ echo "[info] split_root=${SPLIT_ROOT}"
 echo "[info] cache_root=${CACHE_ROOT}"
 echo "[info] split_mode=${SPLIT_MODE}"
 echo "[info] stride=${STRIDE}"
+echo "[info] methods=${METHODS}"
 python --version
 which python
 
@@ -105,6 +108,8 @@ repo_imports = [
     "sind_converter.splits.make",
     "sind_converter.lights.bindings",
     "sind_converter.lights.runtime_signal_states",
+    "sind_converter.scripts.build_sind_unitraj_caches",
+    "sind_converter.scripts.check_signal_cache_contents",
 ]
 for name in repo_imports:
     importlib.import_module(name)
@@ -194,16 +199,19 @@ for split_dir in "${TRAIN_SPLIT_DIR}" "${VAL_SPLIT_DIR}"; do
 done
 
 echo "[step] UniTraj cache validation and build"
+# shellcheck disable=SC2206
+METHOD_ARRAY=(${METHODS})
 srun python -m sind_converter.scripts.build_sind_unitraj_caches \
   --train-dir "${TRAIN_SPLIT_DIR}" \
   --val-dir "${VAL_SPLIT_DIR}" \
   --cache-root "${CACHE_ROOT}" \
-  --methods MTR autobot wayformer \
+  --methods "${METHOD_ARRAY[@]}" \
   --check-samples "${CHECK_SAMPLES}" \
   --dry-run-samples "${DRY_RUN_SAMPLES}" \
+  --use-traffic-light-tokens \
   --overwrite
 
-for method in MTR autobot wayformer; do
+for method in "${METHOD_ARRAY[@]}"; do
   for phase in train test; do
     cache_dir="${CACHE_ROOT}/${method}/sind/${phase}"
     if [ ! -f "${cache_dir}/file_list.pkl" ]; then
@@ -214,6 +222,27 @@ for method in MTR autobot wayformer; do
       echo "[error] Missing h5 cache files in ${cache_dir}" >&2
       exit 1
     fi
+  done
+done
+
+echo "[step] verify signal info survives into the final cache"
+for method in "${METHOD_ARRAY[@]}"; do
+  for phase in train test; do
+    split_dir="${SPLIT_ROOT}/record_level/${phase}/sind"
+    if [ "${SPLIT_MODE}" = "city-holdout" ]; then
+      split_dir="${SPLIT_ROOT}/city_holdout/${phase}/sind"
+    fi
+    if [ "${phase}" = "test" ]; then
+      split_dir="${VAL_SPLIT_DIR}"
+    elif [ "${phase}" = "train" ]; then
+      split_dir="${TRAIN_SPLIT_DIR}"
+    fi
+    cache_dir="${CACHE_ROOT}/${method}/sind/${phase}"
+    srun python -m sind_converter.scripts.check_signal_cache_contents \
+      --split-dir "${split_dir}" \
+      --cache-dir "${cache_dir}" \
+      --sample-count "${VERIFY_SCENARIOS}" \
+      --require-light-tokens
   done
 done
 

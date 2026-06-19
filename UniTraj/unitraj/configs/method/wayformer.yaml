@@ -7,6 +7,7 @@ use_map_lanes: True
 num_modes: 6
 num_agent_feature: 39
 num_map_feature: 38
+num_light_feature: 21
 hidden_size: 256
 num_encoder_layers: 2
 num_decoder_layers: 8

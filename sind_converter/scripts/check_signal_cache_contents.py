@@ -111,6 +111,26 @@ def _cache_has_signal_features(map_polylines: np.ndarray, map_polylines_mask: np
     return bool(np.any(valid_mask & (light_mass > 0.5) & (light_class > 0)))
 
 
+def _cache_has_informative_light_tokens(group: h5py.Group) -> bool:
+    required = {"light_token_features", "light_token_mask", "light_token_valid_mask"}
+    if not required.issubset(group.keys()):
+        return False
+
+    light_token_features = group["light_token_features"][()]
+    light_token_mask = group["light_token_mask"][()].astype(bool)
+    light_token_valid_mask = group["light_token_valid_mask"][()].astype(bool)
+    if light_token_features.ndim != 3:
+        raise ValueError(
+            f"Expected light_token_features to have 3 dims for one sample, got shape={light_token_features.shape}"
+        )
+
+    light_state_slice = light_token_features[..., :LIGHT_FEATURE_DIM]
+    light_state_class = np.argmax(light_state_slice, axis=-1)
+    light_state_mass = np.sum(light_state_slice, axis=-1)
+    token_mask = light_token_mask[..., None] & light_token_valid_mask
+    return bool(np.any(token_mask & (light_state_mass > 0.5) & (light_state_class > 0)))
+
+
 def _scan_cache(cache_dir: Path) -> dict[str, list[dict]]:
     file_list_path = cache_dir / "file_list.pkl"
     if not file_list_path.exists():
@@ -133,11 +153,13 @@ def _scan_cache(cache_dir: Path) -> dict[str, list[dict]]:
             map_polylines = group["map_polylines"][()]
             map_polylines_mask = group["map_polylines_mask"][()]
             has_signal_features = _cache_has_signal_features(map_polylines, map_polylines_mask)
+            has_light_tokens = _cache_has_informative_light_tokens(group)
             scenario_hits[scenario_id].append(
                 {
                     "group_name": str(group_name),
                     "h5_path": str(h5_path),
                     "has_signal_features": has_signal_features,
+                    "has_light_tokens": has_light_tokens,
                 }
             )
     return scenario_hits
@@ -151,6 +173,11 @@ def main() -> None:
     parser.add_argument("--cache-dir", type=Path, required=True, help="UniTraj cache directory, e.g. .../MTR/sind/train")
     parser.add_argument("--sample-count", type=int, default=8, help="Number of informative scenarios to verify.")
     parser.add_argument("--past-len", type=int, default=21, help="Fallback current-time index source when metadata is missing.")
+    parser.add_argument(
+        "--require-light-tokens",
+        action="store_true",
+        help="Fail unless informative history-based light_token_* features are present in the final cache.",
+    )
     args = parser.parse_args()
 
     informative_scenarios = _load_informative_scenarios(args.split_dir, args.sample_count, args.past_len)
@@ -161,7 +188,8 @@ def main() -> None:
         )
 
     scenario_hits = _scan_cache(args.cache_dir)
-    missing: list[dict] = []
+    missing_map_tokens: list[dict] = []
+    missing_light_tokens: list[dict] = []
 
     print(f"[info] split_dir={args.split_dir}")
     print(f"[info] cache_dir={args.cache_dir}")
@@ -171,32 +199,49 @@ def main() -> None:
         scenario_id = row["scenario_id"]
         cache_rows = scenario_hits.get(scenario_id, [])
         matched = any(cache_row["has_signal_features"] for cache_row in cache_rows)
+        matched_light_tokens = any(cache_row["has_light_tokens"] for cache_row in cache_rows)
         active_states = sorted({signal["state_int"] for signal in row["signals"] if signal["state_int"] > 0})
         print(
             "[check] "
             f"scenario_id={scenario_id} active_signal_count={row['active_signal_count']} "
-            f"active_state_ids={active_states} cache_samples={len(cache_rows)} matched={matched}"
+            f"active_state_ids={active_states} cache_samples={len(cache_rows)} "
+            f"matched_map_tokens={matched} matched_light_tokens={matched_light_tokens}"
         )
         if not matched:
-            missing.append(row)
+            missing_map_tokens.append(row)
+        if args.require_light_tokens and not matched_light_tokens:
+            missing_light_tokens.append(row)
 
     total_cache_samples = sum(len(rows) for rows in scenario_hits.values())
     positive_cache_samples = sum(
         1 for rows in scenario_hits.values() for row in rows if row["has_signal_features"]
     )
+    positive_light_token_samples = sum(
+        1 for rows in scenario_hits.values() for row in rows if row["has_light_tokens"]
+    )
     print(
         "[summary] "
         f"cache_scenarios={len(scenario_hits)} cache_samples={total_cache_samples} "
-        f"cache_samples_with_signal_features={positive_cache_samples}"
+        f"cache_samples_with_signal_features={positive_cache_samples} "
+        f"cache_samples_with_light_tokens={positive_light_token_samples}"
     )
 
-    if missing:
-        raise SystemExit(
-            "Signal information did not survive into the final UniTraj cache for "
-            f"{len(missing)} checked scenario(s). Example: {missing[0]['scenario_id']}"
-        )
+    if missing_map_tokens or missing_light_tokens:
+        if args.require_light_tokens and missing_light_tokens:
+            raise SystemExit(
+                "Signal information did not survive into the final UniTraj cache with the expected schema for "
+                f"{len(missing_light_tokens)} checked scenario(s). Example: {missing_light_tokens[0]['scenario_id']} reason=light_tokens"
+            )
+        if missing_map_tokens:
+            raise SystemExit(
+                "Signal information did not survive into the final UniTraj cache for "
+                f"{len(missing_map_tokens)} checked scenario(s). Example: {missing_map_tokens[0]['scenario_id']}"
+            )
 
-    print("[done] informative traffic-light states are present in the final UniTraj cache")
+    if args.require_light_tokens:
+        print("[done] informative traffic-light states are present in both map-token and history light-token cache fields")
+    else:
+        print("[done] informative traffic-light states are present in the final UniTraj cache")
 
 
 if __name__ == "__main__":
