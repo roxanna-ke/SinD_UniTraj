@@ -63,3 +63,4 @@ Summary/
 logs/
 output/
 tmp/
+.mplconfig/

@@ -4,11 +4,11 @@
 #SBATCH --error=/home/%u/projects/SinD_UniTraj_signal/logs/%x-%j.err
 #SBATCH --partition=gpu
 #SBATCH --nodes=1
-#SBATCH --ntasks=1
-#SBATCH --time=30:00:00
+#SBATCH --ntasks-per-node=2
+#SBATCH --time=08:00:00
 #SBATCH --cpus-per-task=4
-#SBATCH --mem=32G
-#SBATCH --gres=gpu:1
+#SBATCH --mem=24G
+#SBATCH --gres=gpu:2
 
 set -euo pipefail
 
@@ -23,13 +23,13 @@ WANDB_PROJECT="${WANDB_PROJECT:-SinD_UniTraj}"
 MAX_DATA_NUM="${MAX_DATA_NUM:-null}"
 MAX_VAL_DATA_NUM="${MAX_VAL_DATA_NUM:-null}"
 MAX_EPOCHS="${MAX_EPOCHS:-40}"
-LOAD_NUM_WORKERS="${LOAD_NUM_WORKERS:-4}"
+LOAD_NUM_WORKERS="${LOAD_NUM_WORKERS:-2}"
 TRAIN_BATCH_SIZE="${TRAIN_BATCH_SIZE:-128}"
 EVAL_BATCH_SIZE="${EVAL_BATCH_SIZE:-128}"
 LIMIT_VAL_BATCHES="${LIMIT_VAL_BATCHES:-0.05}"
 FULL_VALIDATE_LIMIT_VAL_BATCHES="${FULL_VALIDATE_LIMIT_VAL_BATCHES:-1.0}"
 NUM_SANITY_VAL_STEPS="${NUM_SANITY_VAL_STEPS:-0}"
-DEVICES="${DEVICES:-[0]}"
+DEVICES="${DEVICES:-[0,1]}"
 
 if [ ! -f "${VENV_DIR}/bin/activate" ]; then
   echo "[error] Virtual environment not found: ${VENV_DIR}/bin/activate" >&2
@@ -66,6 +66,7 @@ export MKL_NUM_THREADS="${MKL_NUM_THREADS:-1}"
 echo "[info] host=$(hostname)"
 echo "[info] exp_name=${EXP_NAME}"
 echo "[info] wandb_project=${WANDB_PROJECT}"
+echo "[info] cuda_visible_devices=${CUDA_VISIBLE_DEVICES:-unset}"
 echo "[info] cache_path=${CACHE_PATH}"
 echo "[info] train_data_path=${TRAIN_DATA_PATH}"
 echo "[info] val_data_path=${VAL_DATA_PATH}"
@@ -77,13 +78,14 @@ echo "[info] train_batch_size=${TRAIN_BATCH_SIZE}"
 echo "[info] eval_batch_size=${EVAL_BATCH_SIZE}"
 echo "[info] limit_val_batches=${LIMIT_VAL_BATCHES}"
 echo "[info] full_validate_limit_val_batches=${FULL_VALIDATE_LIMIT_VAL_BATCHES}"
+echo "[info] devices=${DEVICES}"
 python --version
 which python
-python -c "import torch; print('torch', torch.__version__, 'cuda', torch.version.cuda, 'available', torch.cuda.is_available()); print(torch.cuda.get_device_name(0) if torch.cuda.is_available() else 'no cuda')"
+python -c "import torch; print('torch', torch.__version__, 'cuda', torch.version.cuda, 'available', torch.cuda.is_available(), 'device_count', torch.cuda.device_count()); print(torch.cuda.get_device_name(0) if torch.cuda.is_available() else 'no cuda'); raise SystemExit(0 if torch.cuda.device_count() >= 2 else 'Expected at least 2 visible CUDA devices for Wayformer DDP')"
 
 start_ts=$(date +%s)
 
-python unitraj/train.py \
+srun python unitraj/train.py \
   method=wayformer \
   debug=False \
   exp_name="${EXP_NAME}" \
