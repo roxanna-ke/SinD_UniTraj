@@ -1,0 +1,23 @@
+wandb
+pytorch-lightning
+hydra-core
+omegaconf
+scikit-learn
+einops
+easydict
+h5py
+pandas
+numpy
+matplotlib
+pyproj
+loguru
+tqdm
+opencv-python
+shapely
+pyquaternion
+transforms3d
+descartes
+Rtree
+joblib
+tensorboard
+-e git+https://github.com/metadriverse/metadrive.git@0624f72a37d82ae26677b01bc6226bd6883ff02a#egg=metadrive_simulator

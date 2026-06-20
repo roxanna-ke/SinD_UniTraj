@@ -1,7 +1,7 @@
 #!/bin/bash
 #SBATCH --job-name=sind_mtr_signal
-#SBATCH --output=/home/%u/projects/SinD_UniTraj/logs/%x-%j.out
-#SBATCH --error=/home/%u/projects/SinD_UniTraj/logs/%x-%j.err
+#SBATCH --output=/home/%u/projects/SinD_UniTraj_signal/logs/%x-%j.out
+#SBATCH --error=/home/%u/projects/SinD_UniTraj_signal/logs/%x-%j.err
 #SBATCH --partition=gpu
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=2
@@ -12,7 +12,7 @@
 
 set -euo pipefail
 
-PROJECT_ROOT="${PROJECT_ROOT:-${SLURM_SUBMIT_DIR:-/home/ke/projects/SinD_UniTraj}}"
+PROJECT_ROOT="${PROJECT_ROOT:-${SLURM_SUBMIT_DIR:-/home/ke/projects/SinD_UniTraj_signal}}"
 VENV_DIR="${VENV_DIR:-$HOME/venvs/mtr-izar}"
 SCRATCH_ROOT="${SCRATCH_ROOT:-/scratch/izar/ke/sind_cache_signal}"
 CACHE_PATH="${CACHE_PATH:-${SCRATCH_ROOT}/unitraj_cache/MTR}"
