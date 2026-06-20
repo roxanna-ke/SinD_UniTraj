@@ -4,11 +4,11 @@
 #SBATCH --error=/home/%u/projects/SinD_UniTraj_signal/logs/%x-%j.err
 #SBATCH --partition=gpu
 #SBATCH --nodes=1
-#SBATCH --ntasks-per-node=2
-#SBATCH --time=08:00:00
+#SBATCH --ntasks=1
+#SBATCH --time=20:00:00
 #SBATCH --cpus-per-task=4
 #SBATCH --mem=24G
-#SBATCH --gres=gpu:2
+#SBATCH --gres=gpu:1
 
 set -euo pipefail
 
@@ -29,7 +29,7 @@ EVAL_BATCH_SIZE="${EVAL_BATCH_SIZE:-128}"
 LIMIT_VAL_BATCHES="${LIMIT_VAL_BATCHES:-0.05}"
 FULL_VALIDATE_LIMIT_VAL_BATCHES="${FULL_VALIDATE_LIMIT_VAL_BATCHES:-1.0}"
 NUM_SANITY_VAL_STEPS="${NUM_SANITY_VAL_STEPS:-0}"
-DEVICES="${DEVICES:-[0,1]}"
+DEVICES="${DEVICES:-[0]}"
 
 if [ ! -f "${VENV_DIR}/bin/activate" ]; then
   echo "[error] Virtual environment not found: ${VENV_DIR}/bin/activate" >&2
@@ -81,11 +81,11 @@ echo "[info] full_validate_limit_val_batches=${FULL_VALIDATE_LIMIT_VAL_BATCHES}"
 echo "[info] devices=${DEVICES}"
 python --version
 which python
-python -c "import torch; print('torch', torch.__version__, 'cuda', torch.version.cuda, 'available', torch.cuda.is_available(), 'device_count', torch.cuda.device_count()); print(torch.cuda.get_device_name(0) if torch.cuda.is_available() else 'no cuda'); raise SystemExit(0 if torch.cuda.device_count() >= 2 else 'Expected at least 2 visible CUDA devices for Wayformer DDP')"
+python -c "import torch; print('torch', torch.__version__, 'cuda', torch.version.cuda, 'available', torch.cuda.is_available(), 'device_count', torch.cuda.device_count()); print(torch.cuda.get_device_name(0) if torch.cuda.is_available() else 'no cuda'); raise SystemExit(0 if torch.cuda.device_count() >= 1 else 'Expected at least 1 visible CUDA device for Wayformer training')"
 
 start_ts=$(date +%s)
 
-srun python unitraj/train.py \
+python unitraj/train.py \
   method=wayformer \
   debug=False \
   exp_name="${EXP_NAME}" \
