@@ -1,4 +1,15 @@
 #!/bin/bash
+#SBATCH --job-name=sind_visualization
+#SBATCH --output=/home/%u/projects/SinD_UniTraj_signal/logs/%x-%j.out
+#SBATCH --error=/home/%u/projects/SinD_UniTraj_signal/logs/%x-%j.err
+#SBATCH --partition=gpu
+#SBATCH --qos=debug
+#SBATCH --nodes=1
+#SBATCH --ntasks=1
+#SBATCH --time=01:00:00
+#SBATCH --cpus-per-task=4
+#SBATCH --mem=32G
+#SBATCH --gres=gpu:1
 
 set -euo pipefail
 
@@ -15,7 +26,7 @@ WANDB_PROJECT="${WANDB_PROJECT:-SinD_UniTraj}"
 SPLIT_MODE="${SPLIT_MODE:-record_level}"
 SIGNAL="${SIGNAL:-false}"
 USE_TRAFFIC_LIGHT_TOKENS="${USE_TRAFFIC_LIGHT_TOKENS:-${SIGNAL}}"
-RUN_SUITE="${RUN_SUITE:-false}"
+RUN_SUITE="${RUN_SUITE:-true}"
 SUITE_INCLUDE="${SUITE_INCLUDE:-mtr_baseline,mtr_signal,wayformer_baseline,wayformer_signal,mtr_cityholdout,mtr_signal_cityholdout,wayformer_cityholdout,wayformer_signal_cityholdout}"
 BASELINE_SCRATCH_ROOT="${BASELINE_SCRATCH_ROOT:-/scratch/izar/ke/sind_cache}"
 SIGNAL_SCRATCH_ROOT="${SIGNAL_SCRATCH_ROOT:-/scratch/izar/ke/sind_cache_signal}"
@@ -251,10 +262,10 @@ run_one() {
     echo "[step] prediction visualization: ${label}"
     python unitraj/visualize_predictions.py \
       "${common_overrides[@]}" \
-      "visualization_output_dir=${output_dir}" \
-      "num_prediction_visualizations=${NUM_IMAGES}" \
-      "visualization_batch_size=${VIS_BATCH_SIZE}" \
-      "visualization_device=${VIS_DEVICE}"
+      "+visualization_output_dir=${output_dir}" \
+      "+num_prediction_visualizations=${NUM_IMAGES}" \
+      "+visualization_batch_size=${VIS_BATCH_SIZE}" \
+      "+visualization_device=${VIS_DEVICE}"
   fi
 
   echo "[done] ${label} outputs are in ${output_dir}"
