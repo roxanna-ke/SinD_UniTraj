@@ -8,33 +8,17 @@ SCRATCH_ROOT="${SCRATCH_ROOT:-/scratch/izar/ke/sind_cache}"
 
 METHOD="${METHOD:-MTR}"
 CKPT_PATH="${CKPT_PATH:-}"
+CKPT_ROOT="${CKPT_ROOT:-${PROJECT_ROOT}/UniTraj/unitraj_ckpt}"
 EXP_NAME="${EXP_NAME:-sind_${METHOD}_eval}"
 WANDB_PROJECT="${WANDB_PROJECT:-SinD_UniTraj}"
 
 SPLIT_MODE="${SPLIT_MODE:-record_level}"
 SIGNAL="${SIGNAL:-false}"
 USE_TRAFFIC_LIGHT_TOKENS="${USE_TRAFFIC_LIGHT_TOKENS:-${SIGNAL}}"
-
-if [ "${SPLIT_MODE}" = "city_holdout" ]; then
-  CITY_HOLDOUT_TAG="${CITY_HOLDOUT_TAG:-xian_holdout_signal}"
-  SPLIT_ROOT="${SPLIT_ROOT:-${SCRATCH_ROOT}/splits_${CITY_HOLDOUT_TAG}}"
-  CACHE_ROOT="${CACHE_ROOT:-${SCRATCH_ROOT}/unitraj_cache_${CITY_HOLDOUT_TAG}}"
-  TRAIN_DATA_PATH="${TRAIN_DATA_PATH:-${SPLIT_ROOT}/city_holdout/train/sind}"
-  VAL_DATA_PATH="${VAL_DATA_PATH:-${SPLIT_ROOT}/city_holdout/test/sind}"
-else
-  SPLIT_ROOT="${SPLIT_ROOT:-${SCRATCH_ROOT}/splits}"
-  CACHE_ROOT="${CACHE_ROOT:-${SCRATCH_ROOT}/unitraj_cache}"
-  TRAIN_DATA_PATH="${TRAIN_DATA_PATH:-${SPLIT_ROOT}/record_level/train/sind}"
-  VAL_DATA_PATH="${VAL_DATA_PATH:-${SPLIT_ROOT}/record_level/test/sind}"
-fi
-
-CACHE_METHOD="${CACHE_METHOD:-${METHOD}}"
-if [ "${CACHE_METHOD}" = "wayformer" ]; then
-  CACHE_METHOD="wayformer"
-elif [ "${CACHE_METHOD}" = "Wayformer" ]; then
-  CACHE_METHOD="wayformer"
-fi
-CACHE_PATH="${CACHE_PATH:-${CACHE_ROOT}/${CACHE_METHOD}}"
+RUN_SUITE="${RUN_SUITE:-false}"
+SUITE_INCLUDE="${SUITE_INCLUDE:-mtr_baseline,mtr_signal,wayformer_baseline,wayformer_signal}"
+BASELINE_SCRATCH_ROOT="${BASELINE_SCRATCH_ROOT:-/scratch/izar/ke/sind_cache}"
+SIGNAL_SCRATCH_ROOT="${SIGNAL_SCRATCH_ROOT:-/scratch/izar/ke/sind_cache_signal}"
 
 MAX_DATA_NUM="${MAX_DATA_NUM:-null}"
 MAX_VAL_DATA_NUM="${MAX_VAL_DATA_NUM:-null}"
@@ -46,20 +30,18 @@ NUM_IMAGES="${NUM_IMAGES:-32}"
 VIS_BATCH_SIZE="${VIS_BATCH_SIZE:-16}"
 VIS_DEVICE="${VIS_DEVICE:-cuda:0}"
 OUTPUT_ROOT="${OUTPUT_ROOT:-${PROJECT_ROOT}/output/prediction_visualizations}"
+USER_VIS_OUTPUT_DIR="${VIS_OUTPUT_DIR:-}"
 VIS_OUTPUT_DIR="${VIS_OUTPUT_DIR:-${OUTPUT_ROOT}/${EXP_NAME}}"
 RUN_EVALUATION="${RUN_EVALUATION:-true}"
 RUN_VISUALIZATION="${RUN_VISUALIZATION:-true}"
 WANDB_MODE="${WANDB_MODE:-disabled}"
 
-if [ -z "${CKPT_PATH}" ]; then
-  echo "[error] CKPT_PATH is required" >&2
-  exit 1
-fi
-
-if [ ! -f "${CKPT_PATH}" ]; then
-  echo "[error] checkpoint not found: ${CKPT_PATH}" >&2
-  exit 1
-fi
+USER_SPLIT_ROOT="${SPLIT_ROOT:-}"
+USER_CACHE_ROOT="${CACHE_ROOT:-}"
+USER_TRAIN_DATA_PATH="${TRAIN_DATA_PATH:-}"
+USER_VAL_DATA_PATH="${VAL_DATA_PATH:-}"
+USER_CACHE_PATH="${CACHE_PATH:-}"
+USER_CACHE_METHOD="${CACHE_METHOD:-}"
 
 if [ ! -d "${PROJECT_ROOT}/UniTraj" ]; then
   echo "[error] UniTraj root not found: ${PROJECT_ROOT}/UniTraj" >&2
@@ -72,20 +54,6 @@ else
   echo "[warn] virtual environment not found, using current Python: ${VENV_DIR}/bin/activate" >&2
 fi
 
-for path in "${TRAIN_DATA_PATH}" "${VAL_DATA_PATH}"; do
-  if [ ! -f "${path}/dataset_summary.pkl" ]; then
-    echo "[error] missing ScenarioNet split: ${path}/dataset_summary.pkl" >&2
-    exit 1
-  fi
-done
-
-if [ ! -f "${CACHE_PATH}/sind/test/file_list.pkl" ]; then
-  echo "[error] UniTraj test cache not found: ${CACHE_PATH}/sind/test/file_list.pkl" >&2
-  exit 1
-fi
-
-mkdir -p "${VIS_OUTPUT_DIR}"
-
 cd "${PROJECT_ROOT}/UniTraj"
 
 export PYTHONPATH="${PROJECT_ROOT}:${PROJECT_ROOT}/UniTraj:${PROJECT_ROOT}/scenarionet:${PYTHONPATH:-}"
@@ -95,49 +63,200 @@ export PYTHONUNBUFFERED=1
 export OMP_NUM_THREADS="${OMP_NUM_THREADS:-1}"
 export MKL_NUM_THREADS="${MKL_NUM_THREADS:-1}"
 
-COMMON_OVERRIDES=(
-  "method=${METHOD}"
-  "debug=${DEBUG}"
-  "exp_name=${EXP_NAME}"
-  "wandb_project=${WANDB_PROJECT}"
-  "devices=${DEVICES}"
-  "ckpt_path=${CKPT_PATH}"
-  "use_cache=True"
-  "overwrite_cache=False"
-  "use_traffic_light_tokens=${USE_TRAFFIC_LIGHT_TOKENS}"
-  "cache_path=${CACHE_PATH}"
-  "train_data_path=[${TRAIN_DATA_PATH}]"
-  "val_data_path=[${VAL_DATA_PATH}]"
-  "max_data_num=[${MAX_DATA_NUM}]"
-  "max_val_data_num=${MAX_VAL_DATA_NUM}"
-  "starting_frame=[0]"
-  "load_num_workers=${LOAD_NUM_WORKERS}"
-  "method.eval_batch_size=${EVAL_BATCH_SIZE}"
-)
+normalize_cache_method() {
+  local method="$1"
+  if [ "${method}" = "wayformer" ] || [ "${method}" = "Wayformer" ]; then
+    echo "wayformer"
+  else
+    echo "${method}"
+  fi
+}
 
-echo "[info] project_root=${PROJECT_ROOT}"
-echo "[info] method=${METHOD}"
-echo "[info] exp_name=${EXP_NAME}"
-echo "[info] ckpt_path=${CKPT_PATH}"
-echo "[info] split_mode=${SPLIT_MODE}"
-echo "[info] cache_path=${CACHE_PATH}"
-echo "[info] val_data_path=${VAL_DATA_PATH}"
-echo "[info] use_traffic_light_tokens=${USE_TRAFFIC_LIGHT_TOKENS}"
-echo "[info] visualization_output_dir=${VIS_OUTPUT_DIR}"
+resolve_checkpoint() {
+  local candidate="$1"
+  python - "$candidate" <<'PY'
+import re
+import sys
+from pathlib import Path
 
-if [ "${RUN_EVALUATION}" = "true" ]; then
-  echo "[step] evaluation"
-  python unitraj/evaluation.py "${COMMON_OVERRIDES[@]}"
+path = Path(sys.argv[1])
+if path.is_file():
+    print(path)
+    raise SystemExit(0)
+if not path.is_dir():
+    raise SystemExit(f"[error] checkpoint path not found: {path}")
+
+files = [p for p in path.rglob("*") if p.is_file()]
+if not files:
+    raise SystemExit(f"[error] no checkpoint files found under: {path}")
+
+def rank(p: Path):
+    match = re.search(r"epoch[=_-](\d+)", p.name)
+    epoch = int(match.group(1)) if match else -1
+    ckpt_bonus = 1 if p.suffix == ".ckpt" else 0
+    return (epoch, ckpt_bonus, p.stat().st_mtime, str(p))
+
+print(max(files, key=rank))
+PY
+}
+
+configure_paths() {
+  local scratch_root="$1"
+  local method="$2"
+  local cache_method
+  cache_method="$(normalize_cache_method "${CACHE_METHOD:-${method}}")"
+
+  if [ "${SPLIT_MODE}" = "city_holdout" ]; then
+    CITY_HOLDOUT_TAG="${CITY_HOLDOUT_TAG:-xian_holdout_signal}"
+    SPLIT_ROOT="${SPLIT_ROOT:-${scratch_root}/splits_${CITY_HOLDOUT_TAG}}"
+    CACHE_ROOT="${CACHE_ROOT:-${scratch_root}/unitraj_cache_${CITY_HOLDOUT_TAG}}"
+    TRAIN_DATA_PATH="${TRAIN_DATA_PATH:-${SPLIT_ROOT}/city_holdout/train/sind}"
+    VAL_DATA_PATH="${VAL_DATA_PATH:-${SPLIT_ROOT}/city_holdout/test/sind}"
+  else
+    SPLIT_ROOT="${SPLIT_ROOT:-${scratch_root}/splits}"
+    CACHE_ROOT="${CACHE_ROOT:-${scratch_root}/unitraj_cache}"
+    TRAIN_DATA_PATH="${TRAIN_DATA_PATH:-${SPLIT_ROOT}/record_level/train/sind}"
+    VAL_DATA_PATH="${VAL_DATA_PATH:-${SPLIT_ROOT}/record_level/test/sind}"
+  fi
+  CACHE_PATH="${CACHE_PATH:-${CACHE_ROOT}/${cache_method}}"
+}
+
+count_cache_samples() {
+  local file_list_path="$1"
+  python - "$file_list_path" "${MAX_VAL_DATA_NUM}" <<'PY'
+import pickle
+import sys
+from pathlib import Path
+
+path = Path(sys.argv[1])
+limit_raw = sys.argv[2]
+with path.open("rb") as handle:
+    file_list = pickle.load(handle)
+total = len(file_list)
+limit = None if limit_raw in {"", "null", "None"} else int(limit_raw)
+effective = total if limit is None else min(total, limit)
+print(f"{effective}/{total}")
+PY
+}
+
+run_one() {
+  local label="$1"
+  local method="$2"
+  local ckpt_candidate="$3"
+  local exp_name="$4"
+  local signal="$5"
+  local scratch_root="$6"
+
+  local ckpt_path
+  ckpt_path="$(resolve_checkpoint "${ckpt_candidate}")"
+
+  unset SPLIT_ROOT CACHE_ROOT TRAIN_DATA_PATH VAL_DATA_PATH CACHE_PATH CACHE_METHOD
+  if [ -n "${USER_SPLIT_ROOT}" ]; then SPLIT_ROOT="${USER_SPLIT_ROOT}"; fi
+  if [ -n "${USER_CACHE_ROOT}" ]; then CACHE_ROOT="${USER_CACHE_ROOT}"; fi
+  if [ -n "${USER_TRAIN_DATA_PATH}" ]; then TRAIN_DATA_PATH="${USER_TRAIN_DATA_PATH}"; fi
+  if [ -n "${USER_VAL_DATA_PATH}" ]; then VAL_DATA_PATH="${USER_VAL_DATA_PATH}"; fi
+  if [ -n "${USER_CACHE_PATH}" ]; then CACHE_PATH="${USER_CACHE_PATH}"; fi
+  if [ -n "${USER_CACHE_METHOD}" ]; then CACHE_METHOD="${USER_CACHE_METHOD}"; fi
+  configure_paths "${scratch_root}" "${method}"
+
+  for path in "${TRAIN_DATA_PATH}" "${VAL_DATA_PATH}"; do
+    if [ ! -f "${path}/dataset_summary.pkl" ]; then
+      echo "[error] missing ScenarioNet split: ${path}/dataset_summary.pkl" >&2
+      exit 1
+    fi
+  done
+
+  if [ ! -f "${CACHE_PATH}/sind/test/file_list.pkl" ]; then
+    echo "[error] UniTraj test cache not found: ${CACHE_PATH}/sind/test/file_list.pkl" >&2
+    exit 1
+  fi
+
+  local output_dir="${OUTPUT_ROOT}/${exp_name}"
+  if [ "${RUN_SUITE}" != "true" ] && [ -n "${USER_VIS_OUTPUT_DIR}" ]; then
+    output_dir="${USER_VIS_OUTPUT_DIR}"
+  fi
+  mkdir -p "${output_dir}"
+
+  local sample_count
+  sample_count="$(count_cache_samples "${CACHE_PATH}/sind/test/file_list.pkl")"
+
+  local common_overrides=(
+    "method=${method}"
+    "debug=${DEBUG}"
+    "exp_name=${exp_name}"
+    "wandb_project=${WANDB_PROJECT}"
+    "devices=${DEVICES}"
+    "ckpt_path=${ckpt_path}"
+    "use_cache=True"
+    "overwrite_cache=False"
+    "use_traffic_light_tokens=${signal}"
+    "cache_path=${CACHE_PATH}"
+    "train_data_path=[${TRAIN_DATA_PATH}]"
+    "val_data_path=[${VAL_DATA_PATH}]"
+    "max_data_num=[${MAX_DATA_NUM}]"
+    "max_val_data_num=${MAX_VAL_DATA_NUM}"
+    "starting_frame=[0]"
+    "load_num_workers=${LOAD_NUM_WORKERS}"
+    "method.eval_batch_size=${EVAL_BATCH_SIZE}"
+  )
+
+  echo "[info] label=${label}"
+  echo "[info] project_root=${PROJECT_ROOT}"
+  echo "[info] method=${method}"
+  echo "[info] exp_name=${exp_name}"
+  echo "[info] ckpt_path=${ckpt_path}"
+  echo "[info] split_mode=${SPLIT_MODE}"
+  echo "[info] cache_path=${CACHE_PATH}"
+  echo "[info] val_data_path=${VAL_DATA_PATH}"
+  echo "[info] validation_samples=${sample_count} after MAX_VAL_DATA_NUM/total"
+  echo "[info] num_prediction_visualizations=${NUM_IMAGES}"
+  echo "[info] use_traffic_light_tokens=${signal}"
+  echo "[info] visualization_output_dir=${output_dir}"
+
+  if [ "${RUN_EVALUATION}" = "true" ]; then
+    echo "[step] evaluation: ${label}"
+    python unitraj/evaluation.py "${common_overrides[@]}"
+  fi
+
+  if [ "${RUN_VISUALIZATION}" = "true" ]; then
+    echo "[step] prediction visualization: ${label}"
+    python unitraj/visualize_predictions.py \
+      "${common_overrides[@]}" \
+      "visualization_output_dir=${output_dir}" \
+      "num_prediction_visualizations=${NUM_IMAGES}" \
+      "visualization_batch_size=${VIS_BATCH_SIZE}" \
+      "visualization_device=${VIS_DEVICE}"
+  fi
+
+  echo "[done] ${label} outputs are in ${output_dir}"
+}
+
+suite_contains() {
+  local needle="$1"
+  case ",${SUITE_INCLUDE}," in
+    *",${needle},"*) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+if [ "${RUN_SUITE}" = "true" ]; then
+  if suite_contains "mtr_baseline"; then
+    run_one "mtr_baseline" "MTR" "${MTR_BASELINE_CKPT_PATH:-${MTR_BASELINE_CKPT_DIR:-${CKPT_ROOT}/sind_MTR_baseline}}" "sind_MTR_baseline_eval" "false" "${BASELINE_SCRATCH_ROOT}"
+  fi
+  if suite_contains "mtr_signal"; then
+    run_one "mtr_signal" "MTR" "${MTR_SIGNAL_CKPT_PATH:-${MTR_SIGNAL_CKPT_DIR:-${CKPT_ROOT}/sind_MTR_signal_baseline}}" "sind_MTR_signal_baseline_eval" "true" "${SIGNAL_SCRATCH_ROOT}"
+  fi
+  if suite_contains "wayformer_baseline"; then
+    run_one "wayformer_baseline" "wayformer" "${WAYFORMER_BASELINE_CKPT_PATH:-${WAYFORMER_BASELINE_CKPT_DIR:-${CKPT_ROOT}/sind_wayformer_baseline}}" "sind_wayformer_baseline_eval" "false" "${BASELINE_SCRATCH_ROOT}"
+  fi
+  if suite_contains "wayformer_signal"; then
+    run_one "wayformer_signal" "wayformer" "${WAYFORMER_SIGNAL_CKPT_PATH:-${WAYFORMER_SIGNAL_CKPT_DIR:-${CKPT_ROOT}/sind_wayformer_signal_baseline}}" "sind_wayformer_signal_baseline_eval" "true" "${SIGNAL_SCRATCH_ROOT}"
+  fi
+  echo "[done] suite outputs are under ${OUTPUT_ROOT}"
+else
+  if [ -z "${CKPT_PATH}" ]; then
+    echo "[error] CKPT_PATH is required unless RUN_SUITE=true" >&2
+    exit 1
+  fi
+  run_one "single" "${METHOD}" "${CKPT_PATH}" "${EXP_NAME}" "${USE_TRAFFIC_LIGHT_TOKENS}" "${SCRATCH_ROOT}"
 fi
-
-if [ "${RUN_VISUALIZATION}" = "true" ]; then
-  echo "[step] prediction visualization"
-  python unitraj/visualize_predictions.py \
-    "${COMMON_OVERRIDES[@]}" \
-    "visualization_output_dir=${VIS_OUTPUT_DIR}" \
-    "num_prediction_visualizations=${NUM_IMAGES}" \
-    "visualization_batch_size=${VIS_BATCH_SIZE}" \
-    "visualization_device=${VIS_DEVICE}"
-fi
-
-echo "[done] outputs are in ${VIS_OUTPUT_DIR}"
