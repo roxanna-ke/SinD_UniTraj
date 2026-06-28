@@ -1,4 +1,3 @@
-import matplotlib.cm as cm
 import matplotlib.pyplot as plt
 import numpy as np
 from PIL import Image
@@ -257,29 +256,6 @@ def concatenate_varying(image_list, column_counts):
 
 
 def visualize_prediction(batch, prediction, draw_index=0):
-    def draw_line_with_mask(point1, point2, color, line_width=4):
-        ax.plot([point1[0], point2[0]], [point1[1], point2[1]], linewidth=line_width, color=color)
-
-    def interpolate_color(t, total_t):
-        # Start is green, end is blue
-        return (0, 1 - t / total_t, t / total_t)
-
-    def interpolate_color_ego(t, total_t):
-        # Start is red, end is blue
-        return (1 - t / total_t, 0, t / total_t)
-
-    def draw_trajectory(trajectory, line_width, ego=False):
-        total_t = len(trajectory)
-        for t in range(total_t - 1):
-            if ego:
-                color = interpolate_color_ego(t, total_t)
-                if trajectory[t, 0] and trajectory[t + 1, 0]:
-                    draw_line_with_mask(trajectory[t], trajectory[t + 1], color=color, line_width=line_width)
-            else:
-                color = interpolate_color(t, total_t)
-                if trajectory[t, 0] and trajectory[t + 1, 0]:
-                    draw_line_with_mask(trajectory[t], trajectory[t + 1], color=color, line_width=line_width)
-
     batch = batch['input_dict']
     map_lanes = batch['map_polylines'][draw_index].cpu().numpy()
     map_mask = batch['map_polylines_mask'][draw_index].cpu().numpy()
@@ -287,40 +263,129 @@ def visualize_prediction(batch, prediction, draw_index=0):
     future_traj = batch['obj_trajs_future_state'][draw_index].cpu().numpy()
     past_traj_mask = batch['obj_trajs_mask'][draw_index].cpu().numpy()
     future_traj_mask = batch['obj_trajs_future_mask'][draw_index].cpu().numpy()
+    track_index_to_predict = int(batch['track_index_to_predict'][draw_index].detach().cpu().item())
     pred_future_prob = prediction['predicted_probability'][draw_index].detach().cpu().numpy()
     pred_future_traj = prediction['predicted_trajectory'][draw_index].detach().cpu().numpy()
+    scenario_id = str(batch['scenario_id'][draw_index])
+    object_id = str(batch['center_objects_id'][draw_index])
 
     map_xy = map_lanes[..., :2]
-
     map_type = map_lanes[..., 0, -20:]
+    target_past_xy = past_traj[track_index_to_predict, :, :2]
+    target_past_valid = past_traj_mask[track_index_to_predict].astype(bool)
+    target_future_xy = future_traj[track_index_to_predict, :, :2]
+    target_future_valid = future_traj_mask[track_index_to_predict].astype(bool)
+
+    if pred_future_traj.ndim == 3:
+        top_mode = int(np.nanargmax(pred_future_prob))
+        target_pred_xy = pred_future_traj[top_mode, :, :2]
+        top_probability = float(pred_future_prob[top_mode])
+    else:
+        top_mode = 0
+        target_pred_xy = pred_future_traj[:, :2]
+        top_probability = float(pred_future_prob) if np.ndim(pred_future_prob) == 0 else float(np.nanmax(pred_future_prob))
+
+    pred_valid = np.isfinite(target_pred_xy).all(axis=-1)
+
+    def valid_points(points, valid):
+        if points.size == 0:
+            return np.zeros((0, 2), dtype=np.float32)
+        finite = np.isfinite(points).all(axis=-1)
+        return points[valid & finite]
+
+    past_points = valid_points(target_past_xy, target_past_valid)
+    future_points = valid_points(target_future_xy, target_future_valid)
+    pred_points = valid_points(target_pred_xy, pred_valid)
+    focus_points = np.concatenate(
+        [points for points in (past_points, future_points, pred_points) if len(points)],
+        axis=0,
+    ) if any(len(points) for points in (past_points, future_points, pred_points)) else np.zeros((1, 2), dtype=np.float32)
+
+    x_min, y_min = np.nanmin(focus_points, axis=0)
+    x_max, y_max = np.nanmax(focus_points, axis=0)
+    padding = 15.0
+    min_span = 35.0
+    x_center = (x_min + x_max) / 2.0
+    y_center = (y_min + y_max) / 2.0
+    span = max(float(x_max - x_min), float(y_max - y_min), min_span)
+    half_span = span / 2.0 + padding
+    xlim = (x_center - half_span, x_center + half_span)
+    ylim = (y_center - half_span, y_center + half_span)
+
+    def draw_polyline(points, valid, color, label, line_width=3.0, linestyle='-', marker='o', alpha=1.0, zorder=3):
+        points = valid_points(points, valid)
+        if len(points) == 0:
+            return
+        ax.plot(
+            points[:, 0],
+            points[:, 1],
+            color=color,
+            linewidth=line_width,
+            linestyle=linestyle,
+            marker=marker,
+            markersize=3.0,
+            markevery=max(len(points) // 8, 1),
+            alpha=alpha,
+            solid_capstyle='round',
+            label=label,
+            zorder=zorder,
+        )
+        ax.scatter(points[-1, 0], points[-1, 1], s=28, color=color, edgecolors='white', linewidths=0.6, zorder=zorder + 1)
+
+    def in_view(points):
+        if len(points) == 0:
+            return False
+        return (
+            (points[:, 0] >= xlim[0]) & (points[:, 0] <= xlim[1]) &
+            (points[:, 1] >= ylim[0]) & (points[:, 1] <= ylim[1])
+        ).any()
 
     # draw map
-    fig, ax = plt.subplots()
+    fig, ax = plt.subplots(figsize=(7.5, 7.5))
     ax.set_aspect('equal')
-    # Plot the map with mask check
     for idx, lane in enumerate(map_xy):
-        lane_type = map_type[idx]
-        # convert onehot to index
-        lane_type = np.argmax(lane_type)
-        if lane_type in [1, 2, 3]:
+        lane_valid = map_mask[idx].astype(bool)
+        lane_points = valid_points(lane, lane_valid)
+        if len(lane_points) < 2 or not in_view(lane_points):
             continue
-        for i in range(len(lane) - 1):
-            if map_mask[idx, i] and map_mask[idx, i + 1]:
-                draw_line_with_mask(lane[i], lane[i + 1], color='grey', line_width=1.5)
+        lane_type = int(np.argmax(map_type[idx]))
+        line_width = 1.0 if lane_type in [1, 2, 3] else 0.7
+        linestyle = ':' if lane_type in [1, 2, 3] else '-'
+        ax.plot(
+            lane_points[:, 0],
+            lane_points[:, 1],
+            color='#9a9a9a',
+            linewidth=line_width,
+            linestyle=linestyle,
+            alpha=0.45,
+            zorder=1,
+        )
 
-    # draw past trajectory
-    for idx, traj in enumerate(past_traj):
-        draw_trajectory(traj, line_width=2)
+    draw_polyline(target_past_xy, target_past_valid, color='#333333', label='Past', line_width=2.0, linestyle='--', marker='.', alpha=0.85, zorder=4)
+    draw_polyline(target_future_xy, target_future_valid, color='#1f77b4', label='GT future', line_width=3.0, marker='o', alpha=0.95, zorder=5)
+    draw_polyline(target_pred_xy, pred_valid, color='#ff7f0e', label=f'Pred top-1 ({top_probability:.2f})', line_width=3.0, marker='o', alpha=0.95, zorder=6)
 
-    # draw future trajectory
-    for idx, traj in enumerate(future_traj):
-        draw_trajectory(traj, line_width=2)
+    if len(past_points):
+        ax.scatter(
+            past_points[-1, 0],
+            past_points[-1, 1],
+            s=52,
+            color='black',
+            edgecolors='white',
+            linewidths=0.8,
+            label='Current',
+            zorder=8,
+        )
 
-    # predicted future trajectory is (n,future_len,2) with n possible future trajectories, visualize all of them
-    for idx, traj in enumerate(pred_future_traj):
-        # calculate color based on probability
-        color = cm.hot(pred_future_prob[idx])
-        for i in range(len(traj) - 1):
-            draw_line_with_mask(traj[i], traj[i + 1], color=color, line_width=2)
+    ax.set_xlim(*xlim)
+    ax.set_ylim(*ylim)
+    ax.axis('off')
+    ax.legend(loc='upper right', frameon=True, framealpha=0.92, fontsize=9)
+    ax.set_title(
+        f'{scenario_id} | object {object_id} | top mode {top_mode}',
+        fontsize=9,
+        pad=8,
+    )
+    fig.tight_layout(pad=0.2)
 
     return plt
