@@ -146,6 +146,7 @@ run_one() {
   local exp_name="$4"
   local signal="$5"
   local scratch_root="$6"
+  local lane_control_map_tokens="$7"
 
   local ckpt_path
   ckpt_path="$(resolve_checkpoint "${ckpt_candidate}")"
@@ -186,10 +187,11 @@ run_one() {
     "exp_name=${exp_name}"
     "wandb_project=${WANDB_PROJECT}"
     "devices=${DEVICES}"
-    "ckpt_path=${ckpt_path}"
+    "ckpt_path='${ckpt_path}'"
     "use_cache=True"
     "overwrite_cache=False"
     "use_traffic_light_tokens=${signal}"
+    "use_lane_control_state_in_map_tokens=${lane_control_map_tokens}"
     "cache_path=${CACHE_PATH}"
     "train_data_path=[${TRAIN_DATA_PATH}]"
     "val_data_path=[${VAL_DATA_PATH}]"
@@ -199,6 +201,20 @@ run_one() {
     "load_num_workers=${LOAD_NUM_WORKERS}"
     "method.eval_batch_size=${EVAL_BATCH_SIZE}"
   )
+
+  if [ "${lane_control_map_tokens}" = "true" ]; then
+    if [ "${method}" = "MTR" ]; then
+      common_overrides+=("method.CONTEXT_ENCODER.NUM_INPUT_ATTR_MAP=38")
+    elif [ "${method}" = "wayformer" ] || [ "${method}" = "Wayformer" ]; then
+      common_overrides+=("method.num_map_feature=38")
+    fi
+  else
+    if [ "${method}" = "MTR" ]; then
+      common_overrides+=("method.CONTEXT_ENCODER.NUM_INPUT_ATTR_MAP=29")
+    elif [ "${method}" = "wayformer" ] || [ "${method}" = "Wayformer" ]; then
+      common_overrides+=("method.num_map_feature=29")
+    fi
+  fi
 
   echo "[info] label=${label}"
   echo "[info] project_root=${PROJECT_ROOT}"
@@ -211,6 +227,7 @@ run_one() {
   echo "[info] validation_samples=${sample_count} after MAX_VAL_DATA_NUM/total"
   echo "[info] num_prediction_visualizations=${NUM_IMAGES}"
   echo "[info] use_traffic_light_tokens=${signal}"
+  echo "[info] use_lane_control_state_in_map_tokens=${lane_control_map_tokens}"
   echo "[info] visualization_output_dir=${output_dir}"
 
   if [ "${RUN_EVALUATION}" = "true" ]; then
@@ -241,16 +258,16 @@ suite_contains() {
 
 if [ "${RUN_SUITE}" = "true" ]; then
   if suite_contains "mtr_baseline"; then
-    run_one "mtr_baseline" "MTR" "${MTR_BASELINE_CKPT_PATH:-${MTR_BASELINE_CKPT_DIR:-${CKPT_ROOT}/sind_MTR_baseline}}" "sind_MTR_baseline_eval" "false" "${BASELINE_SCRATCH_ROOT}"
+    run_one "mtr_baseline" "MTR" "${MTR_BASELINE_CKPT_PATH:-${MTR_BASELINE_CKPT_DIR:-${CKPT_ROOT}/sind_MTR_baseline}}" "sind_MTR_baseline_eval" "false" "${BASELINE_SCRATCH_ROOT}" "false"
   fi
   if suite_contains "mtr_signal"; then
-    run_one "mtr_signal" "MTR" "${MTR_SIGNAL_CKPT_PATH:-${MTR_SIGNAL_CKPT_DIR:-${CKPT_ROOT}/sind_MTR_signal_baseline}}" "sind_MTR_signal_baseline_eval" "true" "${SIGNAL_SCRATCH_ROOT}"
+    run_one "mtr_signal" "MTR" "${MTR_SIGNAL_CKPT_PATH:-${MTR_SIGNAL_CKPT_DIR:-${CKPT_ROOT}/sind_MTR_signal_baseline}}" "sind_MTR_signal_baseline_eval" "true" "${SIGNAL_SCRATCH_ROOT}" "true"
   fi
   if suite_contains "wayformer_baseline"; then
-    run_one "wayformer_baseline" "wayformer" "${WAYFORMER_BASELINE_CKPT_PATH:-${WAYFORMER_BASELINE_CKPT_DIR:-${CKPT_ROOT}/sind_wayformer_baseline}}" "sind_wayformer_baseline_eval" "false" "${BASELINE_SCRATCH_ROOT}"
+    run_one "wayformer_baseline" "wayformer" "${WAYFORMER_BASELINE_CKPT_PATH:-${WAYFORMER_BASELINE_CKPT_DIR:-${CKPT_ROOT}/sind_wayformer_baseline}}" "sind_wayformer_baseline_eval" "false" "${BASELINE_SCRATCH_ROOT}" "false"
   fi
   if suite_contains "wayformer_signal"; then
-    run_one "wayformer_signal" "wayformer" "${WAYFORMER_SIGNAL_CKPT_PATH:-${WAYFORMER_SIGNAL_CKPT_DIR:-${CKPT_ROOT}/sind_wayformer_signal_baseline}}" "sind_wayformer_signal_baseline_eval" "true" "${SIGNAL_SCRATCH_ROOT}"
+    run_one "wayformer_signal" "wayformer" "${WAYFORMER_SIGNAL_CKPT_PATH:-${WAYFORMER_SIGNAL_CKPT_DIR:-${CKPT_ROOT}/sind_wayformer_signal_baseline}}" "sind_wayformer_signal_baseline_eval" "true" "${SIGNAL_SCRATCH_ROOT}" "true"
   fi
   echo "[done] suite outputs are under ${OUTPUT_ROOT}"
 else
@@ -258,5 +275,6 @@ else
     echo "[error] CKPT_PATH is required unless RUN_SUITE=true" >&2
     exit 1
   fi
-  run_one "single" "${METHOD}" "${CKPT_PATH}" "${EXP_NAME}" "${USE_TRAFFIC_LIGHT_TOKENS}" "${SCRATCH_ROOT}"
+  LANE_CONTROL_MAP_TOKENS="${LANE_CONTROL_MAP_TOKENS:-${USE_LANE_CONTROL_STATE_IN_MAP_TOKENS:-${SIGNAL}}}"
+  run_one "single" "${METHOD}" "${CKPT_PATH}" "${EXP_NAME}" "${USE_TRAFFIC_LIGHT_TOKENS}" "${SCRATCH_ROOT}" "${LANE_CONTROL_MAP_TOKENS}"
 fi
