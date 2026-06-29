@@ -108,6 +108,7 @@ def _save_aggregate_visualizations(cfg, output_dir, aggregate_records):
         map_path = resolve_map_path(city, data_root, map_fallback_root)
         map_features, _ = parse_osm_map(map_path)
         output_path = output_dir / f"aggregate_{city}.png"
+        output_path.parent.mkdir(parents=True, exist_ok=True)
         plot = visualization.visualize_prediction_records_on_osm_map(
             map_features,
             selected_records,
