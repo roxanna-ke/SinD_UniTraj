@@ -415,8 +415,15 @@ def _rotate_xy(points, heading):
 
 def _local_to_world(points, center_object_world, map_center):
     points = np.asarray(points, dtype=np.float32)
-    origin = np.asarray(center_object_world[:2], dtype=np.float32) + np.asarray(map_center[:2], dtype=np.float32)
+    map_center = np.asarray(map_center, dtype=np.float32).reshape(-1)[:2]
+    origin = np.asarray(center_object_world[:2], dtype=np.float32) + map_center
     return _rotate_xy(points[..., :2], float(center_object_world[6])) + origin
+
+
+def _source_to_world(points, map_center):
+    points = np.asarray(points, dtype=np.float32)
+    map_center = np.asarray(map_center, dtype=np.float32).reshape(-1)[:2]
+    return points[:, :2] + map_center
 
 
 def extract_prediction_visualization_record(batch, prediction, draw_index=0):
@@ -424,15 +431,11 @@ def extract_prediction_visualization_record(batch, prediction, draw_index=0):
     scenario_id = str(input_dict["scenario_id"][draw_index])
     object_id = str(input_dict["center_objects_id"][draw_index])
 
-    past_traj = _to_numpy(input_dict["obj_trajs"][draw_index])
-    past_mask = _to_numpy(input_dict["obj_trajs_mask"][draw_index]).astype(bool)
-    center_gt = _to_numpy(input_dict["center_gt_trajs"][draw_index])[:, :2]
-    center_gt_mask = _to_numpy(input_dict["center_gt_trajs_mask"][draw_index]).astype(bool)
+    center_gt_src = _to_numpy(input_dict["center_gt_trajs_src"][draw_index])
     center_object_world = _to_numpy(input_dict["center_objects_world"][draw_index])
     map_center = _to_numpy(input_dict["map_center"][draw_index])
-    track_index = int(_to_numpy(input_dict["track_index_to_predict"][draw_index]))
 
-    if track_index >= past_traj.shape[0]:
+    if center_gt_src.ndim != 2 or center_gt_src.shape[0] < 81:
         return {
             "scenario_id": scenario_id,
             "object_id": object_id,
@@ -442,10 +445,16 @@ def extract_prediction_visualization_record(batch, prediction, draw_index=0):
             "top_mode": -1,
             "top_probability": 0.0,
             "past_valid_count": 0,
-            "gt_valid_count": int(center_gt_mask.sum()),
+            "gt_valid_count": 0,
             "pred_valid_count": 0,
             "is_target_track": False,
         }
+
+    src_valid = center_gt_src[:, -1].astype(bool) & np.isfinite(center_gt_src[:, :2]).all(axis=-1)
+    past_src = center_gt_src[:21, :2]
+    gt_src = center_gt_src[21:81, :2]
+    past_valid = src_valid[:21]
+    gt_valid = src_valid[21:81]
 
     pred_prob = _to_numpy(prediction["predicted_probability"][draw_index])
     pred_traj = _to_numpy(prediction["predicted_trajectory"][draw_index])
@@ -458,16 +467,13 @@ def extract_prediction_visualization_record(batch, prediction, draw_index=0):
         pred_xy = pred_traj[:, :2]
         top_probability = float(pred_prob) if np.ndim(pred_prob) == 0 else float(np.nanmax(pred_prob))
 
-    past_xy = past_traj[track_index, :, :2]
-    past_valid = past_mask[track_index] & np.isfinite(past_xy).all(axis=-1)
-    gt_valid = center_gt_mask & np.isfinite(center_gt).all(axis=-1)
     pred_valid = np.isfinite(pred_xy).all(axis=-1)
 
     return {
         "scenario_id": scenario_id,
         "object_id": object_id,
-        "past": _local_to_world(past_xy[past_valid], center_object_world, map_center),
-        "gt": _local_to_world(center_gt[gt_valid], center_object_world, map_center),
+        "past": _source_to_world(past_src[past_valid], map_center),
+        "gt": _source_to_world(gt_src[gt_valid], map_center),
         "pred": _local_to_world(pred_xy[pred_valid], center_object_world, map_center),
         "top_mode": top_mode,
         "top_probability": top_probability,
@@ -606,6 +612,8 @@ def visualize_prediction_records_on_osm_map(
         min_track_distance=min_track_distance,
         min_total_steps=min_total_steps,
     )
+    if not selected_records:
+        raise ValueError(f"No drawable prediction records for {title}")
     drawable_count = sum(1 for record in records if is_drawable_prediction_record(record, min_total_steps=min_total_steps))
     fig, ax = plt.subplots(figsize=(11, 9))
 

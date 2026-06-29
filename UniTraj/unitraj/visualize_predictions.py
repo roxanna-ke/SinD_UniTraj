@@ -79,10 +79,12 @@ def _save_aggregate_visualizations(cfg, output_dir, aggregate_records):
     min_total_steps = int(cfg.get("aggregate_min_total_steps", 61))
     requested_cities = _parse_city_list(cfg.get("aggregate_cities", None))
     cities = requested_cities or sorted({_city_from_scenario_id(record["scenario_id"]) for record in aggregate_records})
+    failed_cities = []
     for city in cities:
         city_records = [record for record in aggregate_records if _city_from_scenario_id(record["scenario_id"]) == city]
         if city == "unknown" or not city_records:
             print(f"[warn] no aggregate candidates for city={city}")
+            failed_cities.append(city)
             continue
         diagnostics = visualization.prediction_record_diagnostics(city_records, min_total_steps=min_total_steps)
         selected_records = visualization.select_prediction_records_for_osm_map(
@@ -104,6 +106,7 @@ def _save_aggregate_visualizations(cfg, output_dir, aggregate_records):
         )
         if len(selected_records) < min_tracks:
             print(f"[warn] insufficient 81-step target aggregate tracks for city={city}")
+            failed_cities.append(city)
             continue
         map_path = resolve_map_path(city, data_root, map_fallback_root)
         map_features, _ = parse_osm_map(map_path)
@@ -121,6 +124,8 @@ def _save_aggregate_visualizations(cfg, output_dir, aggregate_records):
         plot.close()
         plt.close("all")
         print(f"[done] saved aggregate visualization to {output_path}")
+    if failed_cities:
+        raise RuntimeError(f"Failed to generate required aggregate visualizations for cities: {', '.join(failed_cities)}")
 
 
 @hydra.main(version_base=None, config_path="configs", config_name="config")
