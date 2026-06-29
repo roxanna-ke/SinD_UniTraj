@@ -432,10 +432,20 @@ def extract_prediction_visualization_record(batch, prediction, draw_index=0):
     map_center = _to_numpy(input_dict["map_center"][draw_index])
     track_index = int(_to_numpy(input_dict["track_index_to_predict"][draw_index]))
 
-    if track_index < past_traj.shape[0] and past_mask[track_index].any():
-        past_index = track_index
-    else:
-        past_index = int(np.argmax(past_mask.sum(axis=-1)))
+    if track_index >= past_traj.shape[0]:
+        return {
+            "scenario_id": scenario_id,
+            "object_id": object_id,
+            "past": np.zeros((0, 2), dtype=np.float32),
+            "gt": np.zeros((0, 2), dtype=np.float32),
+            "pred": np.zeros((0, 2), dtype=np.float32),
+            "top_mode": -1,
+            "top_probability": 0.0,
+            "past_valid_count": 0,
+            "gt_valid_count": int(center_gt_mask.sum()),
+            "pred_valid_count": 0,
+            "is_target_track": False,
+        }
 
     pred_prob = _to_numpy(prediction["predicted_probability"][draw_index])
     pred_traj = _to_numpy(prediction["predicted_trajectory"][draw_index])
@@ -448,8 +458,8 @@ def extract_prediction_visualization_record(batch, prediction, draw_index=0):
         pred_xy = pred_traj[:, :2]
         top_probability = float(pred_prob) if np.ndim(pred_prob) == 0 else float(np.nanmax(pred_prob))
 
-    past_xy = past_traj[past_index, :, :2]
-    past_valid = past_mask[past_index] & np.isfinite(past_xy).all(axis=-1)
+    past_xy = past_traj[track_index, :, :2]
+    past_valid = past_mask[track_index] & np.isfinite(past_xy).all(axis=-1)
     gt_valid = center_gt_mask & np.isfinite(center_gt).all(axis=-1)
     pred_valid = np.isfinite(pred_xy).all(axis=-1)
 
@@ -461,6 +471,10 @@ def extract_prediction_visualization_record(batch, prediction, draw_index=0):
         "pred": _local_to_world(pred_xy[pred_valid], center_object_world, map_center),
         "top_mode": top_mode,
         "top_probability": top_probability,
+        "past_valid_count": int(past_valid.sum()),
+        "gt_valid_count": int(gt_valid.sum()),
+        "pred_valid_count": int(pred_valid.sum()),
+        "is_target_track": True,
     }
 
 
@@ -489,13 +503,30 @@ def prediction_record_path_length(record):
     return len(record.get("past", ())) + len(record.get("gt", ()))
 
 
+def prediction_record_pred_path_length(record):
+    return len(record.get("past", ())) + len(record.get("pred", ()))
+
+
 def is_drawable_prediction_record(record, min_total_steps=61):
     return (
-        prediction_record_path_length(record) >= min_total_steps
-        and len(record.get("past", ())) >= 2
-        and len(record.get("gt", ())) >= 2
-        and len(record.get("pred", ())) >= 2
+        bool(record.get("is_target_track", False))
+        and int(record.get("past_valid_count", 0)) == 21
+        and int(record.get("gt_valid_count", 0)) == 60
+        and int(record.get("pred_valid_count", 0)) >= 60
+        and prediction_record_path_length(record) == 81
+        and prediction_record_pred_path_length(record) >= min_total_steps
     )
+
+
+def prediction_record_diagnostics(records, min_total_steps=61):
+    return {
+        "candidates": len(records),
+        "target_track": sum(1 for record in records if bool(record.get("is_target_track", False))),
+        "past_21": sum(1 for record in records if int(record.get("past_valid_count", 0)) == 21),
+        "gt_60": sum(1 for record in records if int(record.get("gt_valid_count", 0)) == 60),
+        "pred_60": sum(1 for record in records if int(record.get("pred_valid_count", 0)) >= 60),
+        "drawable": sum(1 for record in records if is_drawable_prediction_record(record, min_total_steps=min_total_steps)),
+    }
 
 
 def _resample_polyline(points, num_samples=32):
@@ -578,28 +609,35 @@ def visualize_prediction_records_on_osm_map(
     drawable_count = sum(1 for record in records if is_drawable_prediction_record(record, min_total_steps=min_total_steps))
     fig, ax = plt.subplots(figsize=(11, 9))
 
-    map_points = []
+    focus_points = []
+    for record in selected_records:
+        for key in ("past", "gt", "pred"):
+            if len(record.get(key, ())):
+                focus_points.append(np.asarray(record[key], dtype=np.float32)[:, :2])
+    if focus_points:
+        stacked_focus = np.concatenate(focus_points, axis=0)
+        x_min, y_min = np.nanmin(stacked_focus, axis=0)
+        x_max, y_max = np.nanmax(stacked_focus, axis=0)
+        padding = 14.0
+        xlim = (float(x_min - padding), float(x_max + padding))
+        ylim = (float(y_min - padding), float(y_max + padding))
+    else:
+        xlim = ylim = None
+
     for feature in map_features.values():
         geometry, closed = _feature_geometry(feature)
         if len(geometry) < 2:
             continue
-        map_points.append(geometry)
-        feature_type = str(feature.get("type", ""))
-        if closed or feature_type == "CROSSWALK":
-            ax.fill(geometry[:, 0], geometry[:, 1], color="#d8d8d8", alpha=0.32, zorder=1)
-            ax.plot(geometry[:, 0], geometry[:, 1], color="#9c9c9c", linewidth=0.7, alpha=0.55, zorder=2)
-        elif feature_type == "LANE_SURFACE_STREET":
-            ax.plot(geometry[:, 0], geometry[:, 1], color="#8a8a8a", linewidth=1.1, alpha=0.55, zorder=2)
-        else:
-            ax.plot(geometry[:, 0], geometry[:, 1], color="#b0b0b0", linewidth=0.8, alpha=0.45, zorder=2)
+        if xlim is not None and ylim is not None:
+            gx_min, gy_min = np.nanmin(geometry, axis=0)
+            gx_max, gy_max = np.nanmax(geometry, axis=0)
+            if gx_max < xlim[0] or gx_min > xlim[1] or gy_max < ylim[0] or gy_min > ylim[1]:
+                continue
+        ax.plot(geometry[:, 0], geometry[:, 1], color="#d6d6d6", linewidth=0.7, alpha=0.55, zorder=1)
 
-    if map_points:
-        all_map_points = np.concatenate(map_points, axis=0)
-        x_min, y_min = np.nanmin(all_map_points, axis=0)
-        x_max, y_max = np.nanmax(all_map_points, axis=0)
-        padding = 12.0
-        ax.set_xlim(float(x_min - padding), float(x_max + padding))
-        ax.set_ylim(float(y_min - padding), float(y_max + padding))
+    if xlim is not None and ylim is not None:
+        ax.set_xlim(*xlim)
+        ax.set_ylim(*ylim)
 
     label_flags = {"past": False, "gt": False, "pred": False, "current": False}
     for record in selected_records:
@@ -610,10 +648,10 @@ def visualize_prediction_records_on_osm_map(
             ax.plot(
                 past[:, 0],
                 past[:, 1],
-                color="#333333",
+                color="#777777",
                 linewidth=1.5,
                 linestyle="--",
-                alpha=0.65,
+                alpha=0.82,
                 label="Past" if not label_flags["past"] else None,
                 zorder=4,
             )
@@ -648,7 +686,7 @@ def visualize_prediction_records_on_osm_map(
             ax.plot(
                 pred[:, 0],
                 pred[:, 1],
-                color="#ff7f0e",
+                color="#e4572e",
                 linewidth=2.5,
                 marker="o",
                 markersize=2.5,

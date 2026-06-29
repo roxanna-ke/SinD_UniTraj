@@ -74,6 +74,7 @@ def _save_aggregate_visualizations(cfg, output_dir, aggregate_records):
     data_root = Path(cfg.get("visualization_data_root", "/scratch/izar/ke/sind_raw"))
     map_fallback_root = Path(cfg.get("visualization_map_fallback_root", str(data_root)))
     max_tracks = int(cfg.get("aggregate_max_tracks", 24))
+    min_tracks = int(cfg.get("aggregate_min_tracks", min(3, max_tracks)))
     min_track_distance = float(cfg.get("aggregate_min_track_distance", 8.0))
     min_total_steps = int(cfg.get("aggregate_min_total_steps", 61))
     requested_cities = _parse_city_list(cfg.get("aggregate_cities", None))
@@ -81,15 +82,28 @@ def _save_aggregate_visualizations(cfg, output_dir, aggregate_records):
     for city in cities:
         city_records = [record for record in aggregate_records if _city_from_scenario_id(record["scenario_id"]) == city]
         if city == "unknown" or not city_records:
+            print(f"[warn] no aggregate candidates for city={city}")
             continue
+        diagnostics = visualization.prediction_record_diagnostics(city_records, min_total_steps=min_total_steps)
         selected_records = visualization.select_prediction_records_for_osm_map(
             city_records,
             max_tracks=max_tracks,
             min_track_distance=min_track_distance,
             min_total_steps=min_total_steps,
         )
-        if not selected_records:
-            print(f"[warn] no drawable aggregate tracks for city={city}")
+        print(
+            "[info] aggregate city={city} candidates={candidates} target_track={target_track} "
+            "past_21={past_21} gt_60={gt_60} pred_60={pred_60} "
+            "drawable={drawable} selected={selected}/{min_tracks}-{max_tracks}".format(
+                city=city,
+                selected=len(selected_records),
+                min_tracks=min_tracks,
+                max_tracks=max_tracks,
+                **diagnostics,
+            )
+        )
+        if len(selected_records) < min_tracks:
+            print(f"[warn] insufficient 81-step target aggregate tracks for city={city}")
             continue
         map_path = resolve_map_path(city, data_root, map_fallback_root)
         map_features, _ = parse_osm_map(map_path)
@@ -149,6 +163,7 @@ def visualize(cfg):
     aggregate_visualization = bool(cfg.get("aggregate_visualization", False))
     target_cities = _parse_city_list(cfg.get("aggregate_cities", None)) or list(ALL_SIND_CITIES)
     aggregate_max_tracks = int(cfg.get("aggregate_max_tracks", 24))
+    aggregate_min_tracks = int(cfg.get("aggregate_min_tracks", min(3, aggregate_max_tracks)))
     aggregate_min_total_steps = int(cfg.get("aggregate_min_total_steps", 61))
 
     def enough_aggregate_records():
