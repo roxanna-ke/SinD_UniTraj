@@ -443,15 +443,21 @@ def extract_prediction_visualization_record(batch, prediction, draw_index=0):
         top_mode = int(np.nanargmax(pred_prob))
         pred_xy = pred_traj[top_mode, :, :2]
         top_probability = float(pred_prob[top_mode])
+        pred_modes_xy = pred_traj[:, :, :2]
     else:
         top_mode = 0
         pred_xy = pred_traj[:, :2]
         top_probability = float(pred_prob) if np.ndim(pred_prob) == 0 else float(np.nanmax(pred_prob))
+        pred_modes_xy = pred_xy[None, :, :]
 
     past_xy = past_traj[past_index, :, :2]
     past_valid = past_mask[past_index] & np.isfinite(past_xy).all(axis=-1)
     gt_valid = center_gt_mask & np.isfinite(center_gt).all(axis=-1)
     pred_valid = np.isfinite(pred_xy).all(axis=-1)
+    pred_modes = []
+    for mode_xy in pred_modes_xy:
+        mode_valid = np.isfinite(mode_xy).all(axis=-1)
+        pred_modes.append(_local_to_world(mode_xy[mode_valid], center_object_world, map_center))
 
     return {
         "scenario_id": scenario_id,
@@ -459,6 +465,7 @@ def extract_prediction_visualization_record(batch, prediction, draw_index=0):
         "past": _local_to_world(past_xy[past_valid], center_object_world, map_center),
         "gt": _local_to_world(center_gt[gt_valid], center_object_world, map_center),
         "pred": _local_to_world(pred_xy[pred_valid], center_object_world, map_center),
+        "pred_modes": pred_modes,
         "top_mode": top_mode,
         "top_probability": top_probability,
     }
@@ -489,9 +496,14 @@ def prediction_record_path_length(record):
     return len(record.get("past", ())) + len(record.get("gt", ()))
 
 
+def prediction_record_top1_path_length(record):
+    return len(record.get("past", ())) + len(record.get("pred", ()))
+
+
 def is_drawable_prediction_record(record, min_total_steps=61):
     return (
         prediction_record_path_length(record) >= min_total_steps
+        and prediction_record_top1_path_length(record) >= min_total_steps
         and len(record.get("past", ())) >= 2
         and len(record.get("gt", ())) >= 2
         and len(record.get("pred", ())) >= 2
@@ -525,6 +537,28 @@ def _trajectory_overlap_distance(path_a, path_b):
     forward = np.linalg.norm(samples_a - samples_b, axis=-1).mean()
     reverse = np.linalg.norm(samples_a - samples_b[::-1], axis=-1).mean()
     return float(min(forward, reverse))
+
+
+def prediction_record_diagnostics(records, min_total_steps=61):
+    total = len(records)
+    enough_steps = sum(
+        1
+        for record in records
+        if prediction_record_path_length(record) >= min_total_steps
+        and prediction_record_top1_path_length(record) >= min_total_steps
+    )
+    enough_past = sum(1 for record in records if len(record.get("past", ())) >= 2)
+    enough_gt = sum(1 for record in records if len(record.get("gt", ())) >= 2)
+    enough_pred = sum(1 for record in records if len(record.get("pred", ())) >= 2)
+    drawable = sum(1 for record in records if is_drawable_prediction_record(record, min_total_steps=min_total_steps))
+    return {
+        "candidates": total,
+        "enough_steps": enough_steps,
+        "enough_past": enough_past,
+        "enough_gt": enough_gt,
+        "enough_pred": enough_pred,
+        "drawable": drawable,
+    }
 
 
 def _select_non_overlapping_records(records, max_tracks, min_track_distance, min_total_steps=61):
@@ -578,22 +612,41 @@ def visualize_prediction_records_on_osm_map(
     drawable_count = sum(1 for record in records if is_drawable_prediction_record(record, min_total_steps=min_total_steps))
     fig, ax = plt.subplots(figsize=(11, 9))
 
+    focus_points = []
+    for record in selected_records:
+        for key in ("past", "gt", "pred"):
+            if len(record.get(key, ())):
+                focus_points.append(np.asarray(record[key], dtype=np.float32)[:, :2])
+        for mode in record.get("pred_modes", ()):
+            if len(mode):
+                focus_points.append(np.asarray(mode, dtype=np.float32)[:, :2])
+    if focus_points:
+        stacked_focus = np.concatenate(focus_points, axis=0)
+        x_min, y_min = np.nanmin(stacked_focus, axis=0)
+        x_max, y_max = np.nanmax(stacked_focus, axis=0)
+        padding = 14.0
+        xlim = (float(x_min - padding), float(x_max + padding))
+        ylim = (float(y_min - padding), float(y_max + padding))
+    else:
+        xlim = ylim = None
+
     map_points = []
     for feature in map_features.values():
         geometry, closed = _feature_geometry(feature)
         if len(geometry) < 2:
             continue
+        if xlim is not None and ylim is not None:
+            gx_min, gy_min = np.nanmin(geometry, axis=0)
+            gx_max, gy_max = np.nanmax(geometry, axis=0)
+            if gx_max < xlim[0] or gx_min > xlim[1] or gy_max < ylim[0] or gy_min > ylim[1]:
+                continue
         map_points.append(geometry)
-        feature_type = str(feature.get("type", ""))
-        if closed or feature_type == "CROSSWALK":
-            ax.fill(geometry[:, 0], geometry[:, 1], color="#d8d8d8", alpha=0.32, zorder=1)
-            ax.plot(geometry[:, 0], geometry[:, 1], color="#9c9c9c", linewidth=0.7, alpha=0.55, zorder=2)
-        elif feature_type == "LANE_SURFACE_STREET":
-            ax.plot(geometry[:, 0], geometry[:, 1], color="#8a8a8a", linewidth=1.1, alpha=0.55, zorder=2)
-        else:
-            ax.plot(geometry[:, 0], geometry[:, 1], color="#b0b0b0", linewidth=0.8, alpha=0.45, zorder=2)
+        ax.plot(geometry[:, 0], geometry[:, 1], color="#d6d6d6", linewidth=0.7, alpha=0.55, zorder=1)
 
-    if map_points:
+    if xlim is not None and ylim is not None:
+        ax.set_xlim(*xlim)
+        ax.set_ylim(*ylim)
+    elif map_points:
         all_map_points = np.concatenate(map_points, axis=0)
         x_min, y_min = np.nanmin(all_map_points, axis=0)
         x_max, y_max = np.nanmax(all_map_points, axis=0)
@@ -601,19 +654,35 @@ def visualize_prediction_records_on_osm_map(
         ax.set_xlim(float(x_min - padding), float(x_max + padding))
         ax.set_ylim(float(y_min - padding), float(y_max + padding))
 
-    label_flags = {"past": False, "gt": False, "pred": False, "current": False}
+    label_flags = {"past": False, "gt": False, "pred": False, "current": False, "other_pred": False}
     for record in selected_records:
         past = record["past"]
         gt = record["gt"]
         pred = record["pred"]
+        pred_modes = record.get("pred_modes", ())
+        top_mode = int(record.get("top_mode", 0))
+        for mode_index, mode in enumerate(pred_modes):
+            if mode_index == top_mode or len(mode) < 2:
+                continue
+            ax.plot(
+                mode[:, 0],
+                mode[:, 1],
+                color="#f4a261",
+                linewidth=1.2,
+                alpha=0.22,
+                solid_capstyle="round",
+                label="Other predicted modes" if not label_flags.get("other_pred") else None,
+                zorder=3,
+            )
+            label_flags["other_pred"] = True
         if len(past):
             ax.plot(
                 past[:, 0],
                 past[:, 1],
-                color="#333333",
+                color="#777777",
                 linewidth=1.5,
                 linestyle="--",
-                alpha=0.65,
+                alpha=0.82,
                 label="Past" if not label_flags["past"] else None,
                 zorder=4,
             )
@@ -648,7 +717,7 @@ def visualize_prediction_records_on_osm_map(
             ax.plot(
                 pred[:, 0],
                 pred[:, 1],
-                color="#ff7f0e",
+                color="#e4572e",
                 linewidth=2.5,
                 marker="o",
                 markersize=2.5,
