@@ -22,6 +22,9 @@ from sind_converter.data.discovery import resolve_map_path
 from sind_converter.maps.osm import parse_osm_map
 
 
+ALL_SIND_CITIES = ("Xi_an", "Changchun", "Chongqing", "Tianjin")
+
+
 def _move_to_device(value, device):
     if torch.is_tensor(value):
         return value.to(device, non_blocking=True)
@@ -57,6 +60,14 @@ def _city_from_scenario_id(scenario_id):
     return "unknown"
 
 
+def _parse_city_list(value):
+    if value is None:
+        return []
+    if isinstance(value, str):
+        return [item for item in value.replace(",", " ").split() if item]
+    return [str(item) for item in value]
+
+
 def _save_aggregate_visualizations(cfg, output_dir, aggregate_records):
     if not aggregate_records:
         return
@@ -64,18 +75,31 @@ def _save_aggregate_visualizations(cfg, output_dir, aggregate_records):
     map_fallback_root = Path(cfg.get("visualization_map_fallback_root", str(data_root)))
     max_tracks = int(cfg.get("aggregate_max_tracks", 24))
     min_track_distance = float(cfg.get("aggregate_min_track_distance", 8.0))
-    for city in sorted({_city_from_scenario_id(record["scenario_id"]) for record in aggregate_records}):
+    min_total_steps = int(cfg.get("aggregate_min_total_steps", 61))
+    requested_cities = _parse_city_list(cfg.get("aggregate_cities", None))
+    cities = requested_cities or sorted({_city_from_scenario_id(record["scenario_id"]) for record in aggregate_records})
+    for city in cities:
         city_records = [record for record in aggregate_records if _city_from_scenario_id(record["scenario_id"]) == city]
         if city == "unknown" or not city_records:
+            continue
+        selected_records = visualization.select_prediction_records_for_osm_map(
+            city_records,
+            max_tracks=max_tracks,
+            min_track_distance=min_track_distance,
+            min_total_steps=min_total_steps,
+        )
+        if not selected_records:
+            print(f"[warn] no drawable aggregate tracks for city={city}")
             continue
         map_path = resolve_map_path(city, data_root, map_fallback_root)
         map_features, _ = parse_osm_map(map_path)
         output_path = output_dir / f"aggregate_{city}.png"
         plot = visualization.visualize_prediction_records_on_osm_map(
             map_features,
-            city_records,
+            selected_records,
             max_tracks=max_tracks,
             min_track_distance=min_track_distance,
+            min_total_steps=min_total_steps,
             title=f"{cfg.exp_name} | {city}",
         )
         plot.savefig(output_path, dpi=220, bbox_inches="tight", pad_inches=0.05)
@@ -96,6 +120,7 @@ def visualize(cfg):
     output_dir = Path(cfg.get("visualization_output_dir", "prediction_visualizations"))
     output_dir.mkdir(parents=True, exist_ok=True)
     num_images = int(cfg.get("num_prediction_visualizations", 32))
+    aggregate_only = bool(cfg.get("aggregate_only", False))
 
     device_name = cfg.get("visualization_device", None)
     if device_name is None:
@@ -119,37 +144,66 @@ def visualize(cfg):
     model.eval()
 
     saved = 0
+    processed = 0
     aggregate_records = []
     aggregate_visualization = bool(cfg.get("aggregate_visualization", False))
+    target_cities = _parse_city_list(cfg.get("aggregate_cities", None)) or list(ALL_SIND_CITIES)
+    aggregate_max_tracks = int(cfg.get("aggregate_max_tracks", 24))
+    aggregate_min_total_steps = int(cfg.get("aggregate_min_total_steps", 61))
+
+    def enough_aggregate_records():
+        if not aggregate_visualization:
+            return saved >= num_images
+        for city in target_cities:
+            city_records = [
+                record
+                for record in aggregate_records
+                if _city_from_scenario_id(record["scenario_id"]) == city
+            ]
+            selected_records = visualization.select_prediction_records_for_osm_map(
+                city_records,
+                max_tracks=aggregate_max_tracks,
+                min_track_distance=float(cfg.get("aggregate_min_track_distance", 8.0)),
+                min_total_steps=aggregate_min_total_steps,
+            )
+            if len(selected_records) < aggregate_max_tracks:
+                return False
+        return True
+
     with torch.inference_mode():
         for batch_idx, batch in enumerate(dataloader):
-            if saved >= num_images:
+            if processed >= num_images or enough_aggregate_records():
                 break
             batch = _move_to_device(batch, device)
             prediction, _ = model(batch)
             batch_size_actual = int(batch["batch_size"])
 
             for draw_index in range(batch_size_actual):
-                if saved >= num_images:
+                if processed >= num_images or enough_aggregate_records():
                     break
 
                 scenario_id = str(batch["input_dict"]["scenario_id"][draw_index])
-                object_id = str(batch["input_dict"]["center_objects_id"][draw_index])
-                safe_id = "".join(ch if ch.isalnum() or ch in ("-", "_") else "_" for ch in scenario_id)
-                output_path = output_dir / f"{saved:04d}_{safe_id}_{object_id}.png"
-
-                plot = visualization.visualize_prediction(batch, prediction, draw_index=draw_index)
-                plot.savefig(output_path, dpi=180, bbox_inches="tight", pad_inches=0.05)
-                plot.close()
-                plt.close("all")
 
                 if aggregate_visualization:
-                    aggregate_records.append(
-                        visualization.extract_prediction_visualization_record(batch, prediction, draw_index=draw_index)
-                    )
-                saved += 1
+                    city = _city_from_scenario_id(scenario_id)
+                    if city in target_cities:
+                        aggregate_records.append(
+                            visualization.extract_prediction_visualization_record(batch, prediction, draw_index=draw_index)
+                        )
 
-    print(f"[done] saved {saved} figures to {output_dir}")
+                if not aggregate_only:
+                    object_id = str(batch["input_dict"]["center_objects_id"][draw_index])
+                    safe_id = "".join(ch if ch.isalnum() or ch in ("-", "_") else "_" for ch in scenario_id)
+                    output_path = output_dir / f"{saved:04d}_{safe_id}_{object_id}.png"
+                    plot = visualization.visualize_prediction(batch, prediction, draw_index=draw_index)
+                    plot.savefig(output_path, dpi=180, bbox_inches="tight", pad_inches=0.05)
+                    plot.close()
+                    plt.close("all")
+                    saved += 1
+
+                processed += 1
+
+    print(f"[done] processed {processed} samples; saved {saved} single-sample figures to {output_dir}")
     if aggregate_visualization:
         _save_aggregate_visualizations(cfg, output_dir, aggregate_records)
 

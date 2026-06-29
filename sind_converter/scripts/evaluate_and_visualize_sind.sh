@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --job-name=sind_signal_cache_smoke
+#SBATCH --job-name=sind_visualization
 #SBATCH --output=/home/%u/projects/SinD_UniTraj_signal/logs/%x-%j.out
 #SBATCH --error=/home/%u/projects/SinD_UniTraj_signal/logs/%x-%j.err
 #SBATCH --partition=gpu
@@ -42,15 +42,17 @@ LOAD_NUM_WORKERS="${LOAD_NUM_WORKERS:-4}"
 EVAL_BATCH_SIZE="${EVAL_BATCH_SIZE:-128}"
 DEVICES="${DEVICES:-[0]}"
 DEBUG="${DEBUG:-False}"
-NUM_IMAGES="${NUM_IMAGES:-256}"
+NUM_IMAGES="${NUM_IMAGES:-2048}"
 VIS_BATCH_SIZE="${VIS_BATCH_SIZE:-8}"
 VIS_DEVICE="${VIS_DEVICE:-cuda:0}"
 OUTPUT_ROOT="${OUTPUT_ROOT:-${PROJECT_ROOT}/output/prediction_visualizations}"
 USER_VIS_OUTPUT_DIR="${VIS_OUTPUT_DIR:-}"
 VIS_OUTPUT_DIR="${VIS_OUTPUT_DIR:-${OUTPUT_ROOT}/${EXP_NAME}}"
 AGGREGATE_VISUALIZATION="${AGGREGATE_VISUALIZATION:-true}"
+AGGREGATE_ONLY="${AGGREGATE_ONLY:-true}"
 AGGREGATE_MAX_TRACKS="${AGGREGATE_MAX_TRACKS:-24}"
-AGGREGATE_MIN_TRACK_DISTANCE="${AGGREGATE_MIN_TRACK_DISTANCE:-8.0}"
+AGGREGATE_MIN_TRACK_DISTANCE="${AGGREGATE_MIN_TRACK_DISTANCE:-4.0}"
+AGGREGATE_MIN_TOTAL_STEPS="${AGGREGATE_MIN_TOTAL_STEPS:-61}"
 VISUALIZATION_DATA_ROOT="${VISUALIZATION_DATA_ROOT:-/scratch/izar/ke/sind_raw}"
 VISUALIZATION_MAP_FALLBACK_ROOT="${VISUALIZATION_MAP_FALLBACK_ROOT:-${VISUALIZATION_DATA_ROOT}}"
 RUN_EVALUATION="${RUN_EVALUATION:-false}"
@@ -174,6 +176,7 @@ run_one() {
   local split_mode="$8"
   local city_holdout_tag="$9"
   local expected_aggregate_cities="${10:-}"
+  local aggregate_cities_arg="${expected_aggregate_cities:-${CITY_HOLDOUT_NAMES}}"
 
   local ckpt_path
   ckpt_path="$(resolve_checkpoint "${ckpt_candidate}")"
@@ -205,6 +208,9 @@ run_one() {
     output_dir="${USER_VIS_OUTPUT_DIR}"
   fi
   mkdir -p "${output_dir}"
+  if [ "${RUN_VISUALIZATION}" = "true" ]; then
+    find "${output_dir}" -maxdepth 1 -type f -name "*.png" -delete
+  fi
 
   local sample_count
   sample_count="$(count_cache_samples "${CACHE_PATH}/sind/test/file_list.pkl")"
@@ -275,8 +281,11 @@ run_one() {
       "+visualization_batch_size=${VIS_BATCH_SIZE}" \
       "+visualization_device=${VIS_DEVICE}" \
       "+aggregate_visualization=${AGGREGATE_VISUALIZATION}" \
+      "+aggregate_only=${AGGREGATE_ONLY}" \
       "+aggregate_max_tracks=${AGGREGATE_MAX_TRACKS}" \
       "+aggregate_min_track_distance=${AGGREGATE_MIN_TRACK_DISTANCE}" \
+      "+aggregate_min_total_steps=${AGGREGATE_MIN_TOTAL_STEPS}" \
+      "+aggregate_cities=${aggregate_cities_arg}" \
       "+visualization_data_root=${VISUALIZATION_DATA_ROOT}" \
       "+visualization_map_fallback_root=${VISUALIZATION_MAP_FALLBACK_ROOT}"
     if [ "${AGGREGATE_VISUALIZATION}" = "true" ] && [ -n "${expected_aggregate_cities}" ]; then
