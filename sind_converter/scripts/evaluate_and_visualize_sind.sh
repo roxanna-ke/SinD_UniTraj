@@ -35,7 +35,6 @@ BASELINE_CITY_HOLDOUT_TAG="${BASELINE_CITY_HOLDOUT_TAG:-xian_holdout}"
 SIGNAL_CITY_HOLDOUT_TAG="${SIGNAL_CITY_HOLDOUT_TAG:-xian_holdout_signal}"
 CITY_HOLDOUT_NAME="${CITY_HOLDOUT_NAME:-Xi_an}"
 CITY_HOLDOUT_NAMES="${CITY_HOLDOUT_NAMES:-Xi_an Changchun Chongqing Tianjin}"
-CITY_HOLDOUT_CKPT_CITIES="${CITY_HOLDOUT_CKPT_CITIES:-Xi_an}"
 
 MAX_DATA_NUM="${MAX_DATA_NUM:-null}"
 MAX_VAL_DATA_NUM="${MAX_VAL_DATA_NUM:-256}"
@@ -51,7 +50,7 @@ USER_VIS_OUTPUT_DIR="${VIS_OUTPUT_DIR:-}"
 VIS_OUTPUT_DIR="${VIS_OUTPUT_DIR:-${OUTPUT_ROOT}/${EXP_NAME}}"
 AGGREGATE_VISUALIZATION="${AGGREGATE_VISUALIZATION:-true}"
 AGGREGATE_ONLY="${AGGREGATE_ONLY:-true}"
-AGGREGATE_MAX_TRACKS="${AGGREGATE_MAX_TRACKS:-3}"
+AGGREGATE_MAX_TRACKS="${AGGREGATE_MAX_TRACKS:-24}"
 AGGREGATE_MIN_TRACK_DISTANCE="${AGGREGATE_MIN_TRACK_DISTANCE:-4.0}"
 AGGREGATE_MIN_TOTAL_STEPS="${AGGREGATE_MIN_TOTAL_STEPS:-61}"
 VISUALIZATION_DATA_ROOT="${VISUALIZATION_DATA_ROOT:-/scratch/izar/ke/sind_raw}"
@@ -363,8 +362,6 @@ ckpt_candidate_for() {
 }
 
 if [ "${RUN_SUITE}" = "true" ]; then
-  echo "[info] record_level_aggregate_cities=${CITY_HOLDOUT_NAMES}"
-  echo "[info] city_holdout_ckpt_cities=${CITY_HOLDOUT_CKPT_CITIES}"
   if suite_contains "mtr_baseline"; then
     run_one "mtr_baseline" "MTR" "$(ckpt_candidate_for MTR_BASELINE "${CKPT_ROOT}/sind_MTR_baseline")" "sind_MTR_baseline_eval" "false" "${BASELINE_SCRATCH_ROOT}" "false" "record_level" "" "${CITY_HOLDOUT_NAMES}"
   fi
@@ -378,7 +375,7 @@ if [ "${RUN_SUITE}" = "true" ]; then
     run_one "wayformer_signal" "wayformer" "$(ckpt_candidate_for WAYFORMER_SIGNAL "${CKPT_ROOT}/sind_wayformer_signal_baseline")" "sind_wayformer_signal_baseline_eval" "true" "${SIGNAL_SCRATCH_ROOT}" "true" "record_level" "" "${CITY_HOLDOUT_NAMES}"
   fi
   # shellcheck disable=SC2206
-  CITY_HOLDOUT_ARRAY=(${CITY_HOLDOUT_CKPT_CITIES})
+  CITY_HOLDOUT_ARRAY=(${CITY_HOLDOUT_NAMES})
   for city in "${CITY_HOLDOUT_ARRAY[@]}"; do
     baseline_tag="$(baseline_city_holdout_tag "${city}")"
     signal_tag="$(signal_city_holdout_tag "${city}")"

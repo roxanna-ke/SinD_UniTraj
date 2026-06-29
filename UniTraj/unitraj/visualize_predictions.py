@@ -81,27 +81,15 @@ def _save_aggregate_visualizations(cfg, output_dir, aggregate_records):
     for city in cities:
         city_records = [record for record in aggregate_records if _city_from_scenario_id(record["scenario_id"]) == city]
         if city == "unknown" or not city_records:
-            print(f"[warn] no aggregate candidates for city={city}")
             continue
-        diagnostics = visualization.prediction_record_diagnostics(city_records, min_total_steps=min_total_steps)
         selected_records = visualization.select_prediction_records_for_osm_map(
             city_records,
             max_tracks=max_tracks,
             min_track_distance=min_track_distance,
             min_total_steps=min_total_steps,
         )
-        print(
-            "[info] aggregate city={city} candidates={candidates} enough_steps={enough_steps} "
-            "enough_past={enough_past} enough_gt={enough_gt} enough_pred={enough_pred} "
-            "drawable={drawable} selected={selected}/{required}".format(
-                city=city,
-                selected=len(selected_records),
-                required=max_tracks,
-                **diagnostics,
-            )
-        )
-        if len(selected_records) < max_tracks:
-            print(f"[warn] insufficient drawable non-overlapping aggregate tracks for city={city}")
+        if not selected_records:
+            print(f"[warn] no drawable aggregate tracks for city={city}")
             continue
         map_path = resolve_map_path(city, data_root, map_fallback_root)
         map_features, _ = parse_osm_map(map_path)
