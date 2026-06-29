@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --job-name=sind_visualization
+#SBATCH --job-name=sind_signal_cache_smoke
 #SBATCH --output=/home/%u/projects/SinD_UniTraj_signal/logs/%x-%j.out
 #SBATCH --error=/home/%u/projects/SinD_UniTraj_signal/logs/%x-%j.err
 #SBATCH --partition=gpu
@@ -8,8 +8,9 @@
 #SBATCH --ntasks=1
 #SBATCH --time=01:00:00
 #SBATCH --cpus-per-task=4
-#SBATCH --mem=32G
+#SBATCH --mem=12G
 #SBATCH --gres=gpu:1
+#SBATCH --account=master
 
 set -euo pipefail
 
@@ -33,20 +34,26 @@ SIGNAL_SCRATCH_ROOT="${SIGNAL_SCRATCH_ROOT:-/scratch/izar/ke/sind_cache_signal}"
 BASELINE_CITY_HOLDOUT_TAG="${BASELINE_CITY_HOLDOUT_TAG:-xian_holdout}"
 SIGNAL_CITY_HOLDOUT_TAG="${SIGNAL_CITY_HOLDOUT_TAG:-xian_holdout_signal}"
 CITY_HOLDOUT_NAME="${CITY_HOLDOUT_NAME:-Xi_an}"
+CITY_HOLDOUT_NAMES="${CITY_HOLDOUT_NAMES:-Xi_an Changchun Chongqing Tianjin}"
 
 MAX_DATA_NUM="${MAX_DATA_NUM:-null}"
-MAX_VAL_DATA_NUM="${MAX_VAL_DATA_NUM:-64}"
+MAX_VAL_DATA_NUM="${MAX_VAL_DATA_NUM:-256}"
 LOAD_NUM_WORKERS="${LOAD_NUM_WORKERS:-4}"
 EVAL_BATCH_SIZE="${EVAL_BATCH_SIZE:-128}"
 DEVICES="${DEVICES:-[0]}"
 DEBUG="${DEBUG:-False}"
-NUM_IMAGES="${NUM_IMAGES:-8}"
+NUM_IMAGES="${NUM_IMAGES:-256}"
 VIS_BATCH_SIZE="${VIS_BATCH_SIZE:-8}"
 VIS_DEVICE="${VIS_DEVICE:-cuda:0}"
 OUTPUT_ROOT="${OUTPUT_ROOT:-${PROJECT_ROOT}/output/prediction_visualizations}"
 USER_VIS_OUTPUT_DIR="${VIS_OUTPUT_DIR:-}"
 VIS_OUTPUT_DIR="${VIS_OUTPUT_DIR:-${OUTPUT_ROOT}/${EXP_NAME}}"
-RUN_EVALUATION="${RUN_EVALUATION:-true}"
+AGGREGATE_VISUALIZATION="${AGGREGATE_VISUALIZATION:-true}"
+AGGREGATE_MAX_TRACKS="${AGGREGATE_MAX_TRACKS:-24}"
+AGGREGATE_MIN_TRACK_DISTANCE="${AGGREGATE_MIN_TRACK_DISTANCE:-8.0}"
+VISUALIZATION_DATA_ROOT="${VISUALIZATION_DATA_ROOT:-/scratch/izar/ke/sind_raw}"
+VISUALIZATION_MAP_FALLBACK_ROOT="${VISUALIZATION_MAP_FALLBACK_ROOT:-${VISUALIZATION_DATA_ROOT}}"
+RUN_EVALUATION="${RUN_EVALUATION:-false}"
 RUN_VISUALIZATION="${RUN_VISUALIZATION:-true}"
 WANDB_MODE="${WANDB_MODE:-disabled}"
 
@@ -166,6 +173,7 @@ run_one() {
   local lane_control_map_tokens="$7"
   local split_mode="$8"
   local city_holdout_tag="$9"
+  local expected_aggregate_cities="${10:-}"
 
   local ckpt_path
   ckpt_path="$(resolve_checkpoint "${ckpt_candidate}")"
@@ -265,7 +273,23 @@ run_one() {
       "+visualization_output_dir=${output_dir}" \
       "+num_prediction_visualizations=${NUM_IMAGES}" \
       "+visualization_batch_size=${VIS_BATCH_SIZE}" \
-      "+visualization_device=${VIS_DEVICE}"
+      "+visualization_device=${VIS_DEVICE}" \
+      "+aggregate_visualization=${AGGREGATE_VISUALIZATION}" \
+      "+aggregate_max_tracks=${AGGREGATE_MAX_TRACKS}" \
+      "+aggregate_min_track_distance=${AGGREGATE_MIN_TRACK_DISTANCE}" \
+      "+visualization_data_root=${VISUALIZATION_DATA_ROOT}" \
+      "+visualization_map_fallback_root=${VISUALIZATION_MAP_FALLBACK_ROOT}"
+    if [ "${AGGREGATE_VISUALIZATION}" = "true" ] && [ -n "${expected_aggregate_cities}" ]; then
+      # shellcheck disable=SC2206
+      EXPECTED_CITY_ARRAY=(${expected_aggregate_cities})
+      for expected_city in "${EXPECTED_CITY_ARRAY[@]}"; do
+        aggregate_path="${output_dir}/aggregate_${expected_city}.png"
+        if [ ! -s "${aggregate_path}" ]; then
+          echo "[error] missing expected aggregate visualization: ${aggregate_path}" >&2
+          exit 1
+        fi
+      done
+    fi
   fi
 
   echo "[done] ${label} outputs are in ${output_dir}"
@@ -279,31 +303,87 @@ suite_contains() {
   esac
 }
 
+city_tag_prefix() {
+  local city="$1"
+  case "${city}" in
+    Xi_an|Xi\'an|Xian|xi_an|xian) echo "xian" ;;
+    Changchun|changchun) echo "changchun" ;;
+    Chongqing|chongqing) echo "chongqing" ;;
+    Tianjin|tianjin) echo "tianjin" ;;
+    *) echo "${city}" | tr '[:upper:]' '[:lower:]' | tr -cs 'a-z0-9' '_' | sed 's/^_//; s/_$//' ;;
+  esac
+}
+
+city_env_prefix() {
+  city_tag_prefix "$1" | tr '[:lower:]' '[:upper:]'
+}
+
+baseline_city_holdout_tag() {
+  local city="$1"
+  local prefix
+  prefix="$(city_tag_prefix "${city}")"
+  local var_name
+  var_name="$(echo "${prefix}_holdout_tag" | tr '[:lower:]' '[:upper:]')"
+  local specific="${!var_name:-}"
+  echo "${specific:-${prefix}_holdout}"
+}
+
+signal_city_holdout_tag() {
+  local city="$1"
+  local prefix
+  prefix="$(city_tag_prefix "${city}")"
+  local var_name
+  var_name="$(echo "${prefix}_signal_holdout_tag" | tr '[:lower:]' '[:upper:]')"
+  local specific="${!var_name:-}"
+  echo "${specific:-${prefix}_holdout_signal}"
+}
+
+ckpt_candidate_for() {
+  local env_prefix="$1"
+  local default_path="$2"
+  local path_var="${env_prefix}_CKPT_PATH"
+  local dir_var="${env_prefix}_CKPT_DIR"
+  if [ -n "${!path_var:-}" ]; then
+    echo "${!path_var}"
+  elif [ -n "${!dir_var:-}" ]; then
+    echo "${!dir_var}"
+  else
+    echo "${default_path}"
+  fi
+}
+
 if [ "${RUN_SUITE}" = "true" ]; then
   if suite_contains "mtr_baseline"; then
-    run_one "mtr_baseline" "MTR" "${MTR_BASELINE_CKPT_PATH:-${MTR_BASELINE_CKPT_DIR:-${CKPT_ROOT}/sind_MTR_baseline}}" "sind_MTR_baseline_eval" "false" "${BASELINE_SCRATCH_ROOT}" "false" "record_level" ""
+    run_one "mtr_baseline" "MTR" "$(ckpt_candidate_for MTR_BASELINE "${CKPT_ROOT}/sind_MTR_baseline")" "sind_MTR_baseline_eval" "false" "${BASELINE_SCRATCH_ROOT}" "false" "record_level" "" "${CITY_HOLDOUT_NAMES}"
   fi
   if suite_contains "mtr_signal"; then
-    run_one "mtr_signal" "MTR" "${MTR_SIGNAL_CKPT_PATH:-${MTR_SIGNAL_CKPT_DIR:-${CKPT_ROOT}/sind_MTR_signal_baseline}}" "sind_MTR_signal_baseline_eval" "true" "${SIGNAL_SCRATCH_ROOT}" "true" "record_level" ""
+    run_one "mtr_signal" "MTR" "$(ckpt_candidate_for MTR_SIGNAL "${CKPT_ROOT}/sind_MTR_signal_baseline")" "sind_MTR_signal_baseline_eval" "true" "${SIGNAL_SCRATCH_ROOT}" "true" "record_level" "" "${CITY_HOLDOUT_NAMES}"
   fi
   if suite_contains "wayformer_baseline"; then
-    run_one "wayformer_baseline" "wayformer" "${WAYFORMER_BASELINE_CKPT_PATH:-${WAYFORMER_BASELINE_CKPT_DIR:-${CKPT_ROOT}/sind_wayformer_baseline}}" "sind_wayformer_baseline_eval" "false" "${BASELINE_SCRATCH_ROOT}" "false" "record_level" ""
+    run_one "wayformer_baseline" "wayformer" "$(ckpt_candidate_for WAYFORMER_BASELINE "${CKPT_ROOT}/sind_wayformer_baseline")" "sind_wayformer_baseline_eval" "false" "${BASELINE_SCRATCH_ROOT}" "false" "record_level" "" "${CITY_HOLDOUT_NAMES}"
   fi
   if suite_contains "wayformer_signal"; then
-    run_one "wayformer_signal" "wayformer" "${WAYFORMER_SIGNAL_CKPT_PATH:-${WAYFORMER_SIGNAL_CKPT_DIR:-${CKPT_ROOT}/sind_wayformer_signal_baseline}}" "sind_wayformer_signal_baseline_eval" "true" "${SIGNAL_SCRATCH_ROOT}" "true" "record_level" ""
+    run_one "wayformer_signal" "wayformer" "$(ckpt_candidate_for WAYFORMER_SIGNAL "${CKPT_ROOT}/sind_wayformer_signal_baseline")" "sind_wayformer_signal_baseline_eval" "true" "${SIGNAL_SCRATCH_ROOT}" "true" "record_level" "" "${CITY_HOLDOUT_NAMES}"
   fi
-  if suite_contains "mtr_cityholdout"; then
-    run_one "mtr_cityholdout" "MTR" "${MTR_CITYHOLDOUT_CKPT_PATH:-${MTR_CITYHOLDOUT_CKPT_DIR:-${CKPT_ROOT}/sind_MTR_cityholdout_${CITY_HOLDOUT_NAME}}}" "sind_MTR_cityholdout_${CITY_HOLDOUT_NAME}_eval" "false" "${BASELINE_SCRATCH_ROOT}" "false" "city_holdout" "${BASELINE_CITY_HOLDOUT_TAG}"
-  fi
-  if suite_contains "mtr_signal_cityholdout"; then
-    run_one "mtr_signal_cityholdout" "MTR" "${MTR_SIGNAL_CITYHOLDOUT_CKPT_PATH:-${MTR_SIGNAL_CITYHOLDOUT_CKPT_DIR:-${CKPT_ROOT}/sind_MTR_signal_cityholdout_${CITY_HOLDOUT_NAME}}}" "sind_MTR_signal_cityholdout_${CITY_HOLDOUT_NAME}_eval" "true" "${SIGNAL_SCRATCH_ROOT}" "true" "city_holdout" "${SIGNAL_CITY_HOLDOUT_TAG}"
-  fi
-  if suite_contains "wayformer_cityholdout"; then
-    run_one "wayformer_cityholdout" "wayformer" "${WAYFORMER_CITYHOLDOUT_CKPT_PATH:-${WAYFORMER_CITYHOLDOUT_CKPT_DIR:-${CKPT_ROOT}/sind_wayformer_cityholdout_${CITY_HOLDOUT_NAME}}}" "sind_wayformer_cityholdout_${CITY_HOLDOUT_NAME}_eval" "false" "${BASELINE_SCRATCH_ROOT}" "false" "city_holdout" "${BASELINE_CITY_HOLDOUT_TAG}"
-  fi
-  if suite_contains "wayformer_signal_cityholdout"; then
-    run_one "wayformer_signal_cityholdout" "wayformer" "${WAYFORMER_SIGNAL_CITYHOLDOUT_CKPT_PATH:-${WAYFORMER_SIGNAL_CITYHOLDOUT_CKPT_DIR:-${CKPT_ROOT}/sind_wayformer_signal_cityholdout_${CITY_HOLDOUT_NAME}}}" "sind_wayformer_signal_cityholdout_${CITY_HOLDOUT_NAME}_eval" "true" "${SIGNAL_SCRATCH_ROOT}" "true" "city_holdout" "${SIGNAL_CITY_HOLDOUT_TAG}"
-  fi
+  # shellcheck disable=SC2206
+  CITY_HOLDOUT_ARRAY=(${CITY_HOLDOUT_NAMES})
+  for city in "${CITY_HOLDOUT_ARRAY[@]}"; do
+    baseline_tag="$(baseline_city_holdout_tag "${city}")"
+    signal_tag="$(signal_city_holdout_tag "${city}")"
+    city_env="$(city_env_prefix "${city}")"
+    if suite_contains "mtr_cityholdout"; then
+      run_one "mtr_cityholdout_${city}" "MTR" "$(ckpt_candidate_for "MTR_CITYHOLDOUT_${city_env}" "${CKPT_ROOT}/sind_MTR_cityholdout_${city}")" "sind_MTR_cityholdout_${city}_eval" "false" "${BASELINE_SCRATCH_ROOT}" "false" "city_holdout" "${baseline_tag}" "${city}"
+    fi
+    if suite_contains "mtr_signal_cityholdout"; then
+      run_one "mtr_signal_cityholdout_${city}" "MTR" "$(ckpt_candidate_for "MTR_SIGNAL_CITYHOLDOUT_${city_env}" "${CKPT_ROOT}/sind_MTR_signal_cityholdout_${city}")" "sind_MTR_signal_cityholdout_${city}_eval" "true" "${SIGNAL_SCRATCH_ROOT}" "true" "city_holdout" "${signal_tag}" "${city}"
+    fi
+    if suite_contains "wayformer_cityholdout"; then
+      run_one "wayformer_cityholdout_${city}" "wayformer" "$(ckpt_candidate_for "WAYFORMER_CITYHOLDOUT_${city_env}" "${CKPT_ROOT}/sind_wayformer_cityholdout_${city}")" "sind_wayformer_cityholdout_${city}_eval" "false" "${BASELINE_SCRATCH_ROOT}" "false" "city_holdout" "${baseline_tag}" "${city}"
+    fi
+    if suite_contains "wayformer_signal_cityholdout"; then
+      run_one "wayformer_signal_cityholdout_${city}" "wayformer" "$(ckpt_candidate_for "WAYFORMER_SIGNAL_CITYHOLDOUT_${city_env}" "${CKPT_ROOT}/sind_wayformer_signal_cityholdout_${city}")" "sind_wayformer_signal_cityholdout_${city}_eval" "true" "${SIGNAL_SCRATCH_ROOT}" "true" "city_holdout" "${signal_tag}" "${city}"
+    fi
+  done
   echo "[done] suite outputs are under ${OUTPUT_ROOT}"
 else
   if [ -z "${CKPT_PATH}" ]; then
@@ -312,5 +392,5 @@ else
   fi
   LANE_CONTROL_MAP_TOKENS="${LANE_CONTROL_MAP_TOKENS:-${USE_LANE_CONTROL_STATE_IN_MAP_TOKENS:-${SIGNAL}}}"
   CITY_HOLDOUT_TAG="${CITY_HOLDOUT_TAG:-${SIGNAL_CITY_HOLDOUT_TAG}}"
-  run_one "single" "${METHOD}" "${CKPT_PATH}" "${EXP_NAME}" "${USE_TRAFFIC_LIGHT_TOKENS}" "${SCRATCH_ROOT}" "${LANE_CONTROL_MAP_TOKENS}" "${SPLIT_MODE}" "${CITY_HOLDOUT_TAG}"
+  run_one "single" "${METHOD}" "${CKPT_PATH}" "${EXP_NAME}" "${USE_TRAFFIC_LIGHT_TOKENS}" "${SCRATCH_ROOT}" "${LANE_CONTROL_MAP_TOKENS}" "${SPLIT_MODE}" "${CITY_HOLDOUT_TAG}" ""
 fi

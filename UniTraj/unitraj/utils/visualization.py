@@ -260,9 +260,9 @@ def visualize_prediction(batch, prediction, draw_index=0):
     map_lanes = batch['map_polylines'][draw_index].cpu().numpy()
     map_mask = batch['map_polylines_mask'][draw_index].cpu().numpy()
     past_traj = batch['obj_trajs'][draw_index].cpu().numpy()
-    future_traj = batch['obj_trajs_future_state'][draw_index].cpu().numpy()
     past_traj_mask = batch['obj_trajs_mask'][draw_index].cpu().numpy()
-    future_traj_mask = batch['obj_trajs_future_mask'][draw_index].cpu().numpy()
+    center_gt_trajs = batch['center_gt_trajs'][draw_index].cpu().numpy()
+    center_gt_trajs_mask = batch['center_gt_trajs_mask'][draw_index].cpu().numpy()
     track_index_to_predict = int(batch['track_index_to_predict'][draw_index].detach().cpu().item())
     pred_future_prob = prediction['predicted_probability'][draw_index].detach().cpu().numpy()
     pred_future_traj = prediction['predicted_trajectory'][draw_index].detach().cpu().numpy()
@@ -271,10 +271,16 @@ def visualize_prediction(batch, prediction, draw_index=0):
 
     map_xy = map_lanes[..., :2]
     map_type = map_lanes[..., 0, -20:]
-    target_past_xy = past_traj[track_index_to_predict, :, :2]
-    target_past_valid = past_traj_mask[track_index_to_predict].astype(bool)
-    target_future_xy = future_traj[track_index_to_predict, :, :2]
-    target_future_valid = future_traj_mask[track_index_to_predict].astype(bool)
+    if track_index_to_predict < past_traj.shape[0] and past_traj_mask[track_index_to_predict].any():
+        target_past_index = track_index_to_predict
+    else:
+        valid_counts = past_traj_mask.astype(bool).sum(axis=-1)
+        target_past_index = int(np.argmax(valid_counts))
+
+    target_past_xy = past_traj[target_past_index, :, :2]
+    target_past_valid = past_traj_mask[target_past_index].astype(bool)
+    target_future_xy = center_gt_trajs[:, :2]
+    target_future_valid = center_gt_trajs_mask.astype(bool)
 
     if pred_future_traj.ndim == 3:
         top_mode = int(np.nanargmax(pred_future_prob))
@@ -284,6 +290,7 @@ def visualize_prediction(batch, prediction, draw_index=0):
         top_mode = 0
         target_pred_xy = pred_future_traj[:, :2]
         top_probability = float(pred_future_prob) if np.ndim(pred_future_prob) == 0 else float(np.nanmax(pred_future_prob))
+    target_pred_xy = target_pred_xy[:, :2]
 
     pred_valid = np.isfinite(target_pred_xy).all(axis=-1)
 
@@ -388,4 +395,214 @@ def visualize_prediction(batch, prediction, draw_index=0):
     )
     fig.tight_layout(pad=0.2)
 
+    return plt
+
+
+def _to_numpy(value):
+    if hasattr(value, "detach"):
+        return value.detach().cpu().numpy()
+    return np.asarray(value)
+
+
+def _rotate_xy(points, heading):
+    cos_h = np.cos(heading)
+    sin_h = np.sin(heading)
+    rotated = np.empty_like(points[..., :2], dtype=np.float32)
+    rotated[..., 0] = points[..., 0] * cos_h - points[..., 1] * sin_h
+    rotated[..., 1] = points[..., 0] * sin_h + points[..., 1] * cos_h
+    return rotated
+
+
+def _local_to_world(points, center_object_world, map_center):
+    points = np.asarray(points, dtype=np.float32)
+    origin = np.asarray(center_object_world[:2], dtype=np.float32) + np.asarray(map_center[:2], dtype=np.float32)
+    return _rotate_xy(points[..., :2], float(center_object_world[6])) + origin
+
+
+def extract_prediction_visualization_record(batch, prediction, draw_index=0):
+    input_dict = batch["input_dict"]
+    scenario_id = str(input_dict["scenario_id"][draw_index])
+    object_id = str(input_dict["center_objects_id"][draw_index])
+
+    past_traj = _to_numpy(input_dict["obj_trajs"][draw_index])
+    past_mask = _to_numpy(input_dict["obj_trajs_mask"][draw_index]).astype(bool)
+    center_gt = _to_numpy(input_dict["center_gt_trajs"][draw_index])[:, :2]
+    center_gt_mask = _to_numpy(input_dict["center_gt_trajs_mask"][draw_index]).astype(bool)
+    center_object_world = _to_numpy(input_dict["center_objects_world"][draw_index])
+    map_center = _to_numpy(input_dict["map_center"][draw_index])
+    track_index = int(_to_numpy(input_dict["track_index_to_predict"][draw_index]))
+
+    if track_index < past_traj.shape[0] and past_mask[track_index].any():
+        past_index = track_index
+    else:
+        past_index = int(np.argmax(past_mask.sum(axis=-1)))
+
+    pred_prob = _to_numpy(prediction["predicted_probability"][draw_index])
+    pred_traj = _to_numpy(prediction["predicted_trajectory"][draw_index])
+    if pred_traj.ndim == 3:
+        top_mode = int(np.nanargmax(pred_prob))
+        pred_xy = pred_traj[top_mode, :, :2]
+        top_probability = float(pred_prob[top_mode])
+    else:
+        top_mode = 0
+        pred_xy = pred_traj[:, :2]
+        top_probability = float(pred_prob) if np.ndim(pred_prob) == 0 else float(np.nanmax(pred_prob))
+
+    past_xy = past_traj[past_index, :, :2]
+    past_valid = past_mask[past_index] & np.isfinite(past_xy).all(axis=-1)
+    gt_valid = center_gt_mask & np.isfinite(center_gt).all(axis=-1)
+    pred_valid = np.isfinite(pred_xy).all(axis=-1)
+
+    return {
+        "scenario_id": scenario_id,
+        "object_id": object_id,
+        "past": _local_to_world(past_xy[past_valid], center_object_world, map_center),
+        "gt": _local_to_world(center_gt[gt_valid], center_object_world, map_center),
+        "pred": _local_to_world(pred_xy[pred_valid], center_object_world, map_center),
+        "top_mode": top_mode,
+        "top_probability": top_probability,
+    }
+
+
+def _feature_geometry(feature):
+    if "polyline" in feature:
+        geometry = np.asarray(feature.get("polyline", []), dtype=np.float32)
+        closed = False
+    elif "polygon" in feature:
+        geometry = np.asarray(feature.get("polygon", []), dtype=np.float32)
+        closed = True
+    else:
+        return np.zeros((0, 2), dtype=np.float32), False
+    if geometry.ndim != 2 or geometry.shape[0] == 0:
+        return np.zeros((0, 2), dtype=np.float32), closed
+    return geometry[:, :2], closed
+
+
+def _track_anchor(record):
+    points = [record[key] for key in ("past", "gt", "pred") if len(record[key])]
+    if not points:
+        return None
+    return np.concatenate(points, axis=0).mean(axis=0)
+
+
+def _select_non_overlapping_records(records, max_tracks, min_track_distance):
+    selected = []
+    anchors = []
+    ranked = sorted(
+        records,
+        key=lambda item: (
+            -(len(item["gt"]) + len(item["pred"])),
+            -float(item.get("top_probability", 0.0)),
+            str(item.get("scenario_id", "")),
+        ),
+    )
+    for record in ranked:
+        anchor = _track_anchor(record)
+        if anchor is None:
+            continue
+        if all(np.linalg.norm(anchor - prev_anchor) >= min_track_distance for prev_anchor in anchors):
+            selected.append(record)
+            anchors.append(anchor)
+        if len(selected) >= max_tracks:
+            break
+    return selected
+
+
+def visualize_prediction_records_on_osm_map(
+    map_features,
+    records,
+    max_tracks=24,
+    min_track_distance=8.0,
+    title="Prediction trajectories",
+):
+    selected_records = _select_non_overlapping_records(records, max_tracks, min_track_distance)
+    fig, ax = plt.subplots(figsize=(11, 9))
+
+    map_points = []
+    for feature in map_features.values():
+        geometry, closed = _feature_geometry(feature)
+        if len(geometry) < 2:
+            continue
+        map_points.append(geometry)
+        feature_type = str(feature.get("type", ""))
+        if closed or feature_type == "CROSSWALK":
+            ax.fill(geometry[:, 0], geometry[:, 1], color="#d8d8d8", alpha=0.32, zorder=1)
+            ax.plot(geometry[:, 0], geometry[:, 1], color="#9c9c9c", linewidth=0.7, alpha=0.55, zorder=2)
+        elif feature_type == "LANE_SURFACE_STREET":
+            ax.plot(geometry[:, 0], geometry[:, 1], color="#8a8a8a", linewidth=1.1, alpha=0.55, zorder=2)
+        else:
+            ax.plot(geometry[:, 0], geometry[:, 1], color="#b0b0b0", linewidth=0.8, alpha=0.45, zorder=2)
+
+    if map_points:
+        all_map_points = np.concatenate(map_points, axis=0)
+        x_min, y_min = np.nanmin(all_map_points, axis=0)
+        x_max, y_max = np.nanmax(all_map_points, axis=0)
+        padding = 12.0
+        ax.set_xlim(float(x_min - padding), float(x_max + padding))
+        ax.set_ylim(float(y_min - padding), float(y_max + padding))
+
+    label_flags = {"past": False, "gt": False, "pred": False, "current": False}
+    for record in selected_records:
+        past = record["past"]
+        gt = record["gt"]
+        pred = record["pred"]
+        if len(past):
+            ax.plot(
+                past[:, 0],
+                past[:, 1],
+                color="#333333",
+                linewidth=1.5,
+                linestyle="--",
+                alpha=0.65,
+                label="Past" if not label_flags["past"] else None,
+                zorder=4,
+            )
+            ax.scatter(
+                past[-1, 0],
+                past[-1, 1],
+                s=24,
+                color="#111111",
+                edgecolors="white",
+                linewidths=0.5,
+                label="Current" if not label_flags["current"] else None,
+                zorder=8,
+            )
+            label_flags["past"] = True
+            label_flags["current"] = True
+        if len(gt):
+            ax.plot(
+                gt[:, 0],
+                gt[:, 1],
+                color="#1f77b4",
+                linewidth=2.5,
+                marker="o",
+                markersize=2.5,
+                markevery=max(len(gt) // 8, 1),
+                alpha=0.9,
+                solid_capstyle="round",
+                label="GT future" if not label_flags["gt"] else None,
+                zorder=5,
+            )
+            label_flags["gt"] = True
+        if len(pred):
+            ax.plot(
+                pred[:, 0],
+                pred[:, 1],
+                color="#ff7f0e",
+                linewidth=2.5,
+                marker="o",
+                markersize=2.5,
+                markevery=max(len(pred) // 8, 1),
+                alpha=0.9,
+                solid_capstyle="round",
+                label="Pred top-1" if not label_flags["pred"] else None,
+                zorder=6,
+            )
+            label_flags["pred"] = True
+
+    ax.set_title(f"{title} | shown {len(selected_records)}/{len(records)} tracks", fontsize=12)
+    ax.set_aspect("equal", adjustable="box")
+    ax.axis("off")
+    ax.legend(loc="upper right", frameon=True, framealpha=0.92, fontsize=9)
+    fig.tight_layout(pad=0.2)
     return plt

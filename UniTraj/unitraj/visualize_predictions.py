@@ -18,6 +18,8 @@ from unitraj.datasets import build_dataset
 from unitraj.models import build_model
 from unitraj.utils import visualization
 from unitraj.utils.utils import set_seed
+from sind_converter.data.discovery import resolve_map_path
+from sind_converter.maps.osm import parse_osm_map
 
 
 def _move_to_device(value, device):
@@ -40,6 +42,46 @@ def _load_checkpoint(model, ckpt_path):
         print(f"[warn] missing checkpoint keys: {len(missing)}")
     if unexpected:
         print(f"[warn] unexpected checkpoint keys: {len(unexpected)}")
+
+
+def _city_from_scenario_id(scenario_id):
+    scenario_id = str(scenario_id).lower()
+    if scenario_id.startswith("sind_xi_an") or "xi_an" in scenario_id or "xian" in scenario_id:
+        return "Xi_an"
+    if "changchun" in scenario_id:
+        return "Changchun"
+    if "chongqing" in scenario_id:
+        return "Chongqing"
+    if "tianjin" in scenario_id:
+        return "Tianjin"
+    return "unknown"
+
+
+def _save_aggregate_visualizations(cfg, output_dir, aggregate_records):
+    if not aggregate_records:
+        return
+    data_root = Path(cfg.get("visualization_data_root", "/scratch/izar/ke/sind_raw"))
+    map_fallback_root = Path(cfg.get("visualization_map_fallback_root", str(data_root)))
+    max_tracks = int(cfg.get("aggregate_max_tracks", 24))
+    min_track_distance = float(cfg.get("aggregate_min_track_distance", 8.0))
+    for city in sorted({_city_from_scenario_id(record["scenario_id"]) for record in aggregate_records}):
+        city_records = [record for record in aggregate_records if _city_from_scenario_id(record["scenario_id"]) == city]
+        if city == "unknown" or not city_records:
+            continue
+        map_path = resolve_map_path(city, data_root, map_fallback_root)
+        map_features, _ = parse_osm_map(map_path)
+        output_path = output_dir / f"aggregate_{city}.png"
+        plot = visualization.visualize_prediction_records_on_osm_map(
+            map_features,
+            city_records,
+            max_tracks=max_tracks,
+            min_track_distance=min_track_distance,
+            title=f"{cfg.exp_name} | {city}",
+        )
+        plot.savefig(output_path, dpi=220, bbox_inches="tight", pad_inches=0.05)
+        plot.close()
+        plt.close("all")
+        print(f"[done] saved aggregate visualization to {output_path}")
 
 
 @hydra.main(version_base=None, config_path="configs", config_name="config")
@@ -77,16 +119,19 @@ def visualize(cfg):
     model.eval()
 
     saved = 0
+    aggregate_records = []
+    aggregate_visualization = bool(cfg.get("aggregate_visualization", False))
     with torch.inference_mode():
         for batch_idx, batch in enumerate(dataloader):
+            if saved >= num_images:
+                break
             batch = _move_to_device(batch, device)
             prediction, _ = model(batch)
             batch_size_actual = int(batch["batch_size"])
 
             for draw_index in range(batch_size_actual):
                 if saved >= num_images:
-                    print(f"[done] saved {saved} figures to {output_dir}")
-                    return
+                    break
 
                 scenario_id = str(batch["input_dict"]["scenario_id"][draw_index])
                 object_id = str(batch["input_dict"]["center_objects_id"][draw_index])
@@ -97,9 +142,16 @@ def visualize(cfg):
                 plot.savefig(output_path, dpi=180, bbox_inches="tight", pad_inches=0.05)
                 plot.close()
                 plt.close("all")
+
+                if aggregate_visualization:
+                    aggregate_records.append(
+                        visualization.extract_prediction_visualization_record(batch, prediction, draw_index=draw_index)
+                    )
                 saved += 1
 
     print(f"[done] saved {saved} figures to {output_dir}")
+    if aggregate_visualization:
+        _save_aggregate_visualizations(cfg, output_dir, aggregate_records)
 
 
 if __name__ == "__main__":
