@@ -430,6 +430,11 @@ def extract_prediction_visualization_record(batch, prediction, draw_index=0):
     input_dict = batch["input_dict"]
     scenario_id = str(input_dict["scenario_id"][draw_index])
     object_id = str(input_dict["center_objects_id"][draw_index])
+    object_type = None
+    if "center_objects_type" in input_dict:
+        object_type_value = input_dict["center_objects_type"][draw_index]
+        object_type_array = _to_numpy(object_type_value)
+        object_type = object_type_array.item() if np.ndim(object_type_array) == 0 else object_type_array.tolist()
 
     center_gt_src = _to_numpy(input_dict["center_gt_trajs_src"][draw_index])
     center_object_world = _to_numpy(input_dict["center_objects_world"][draw_index])
@@ -442,6 +447,7 @@ def extract_prediction_visualization_record(batch, prediction, draw_index=0):
             "past": np.zeros((0, 2), dtype=np.float32),
             "gt": np.zeros((0, 2), dtype=np.float32),
             "pred": np.zeros((0, 2), dtype=np.float32),
+            "object_type": object_type,
             "top_mode": -1,
             "top_probability": 0.0,
             "past_valid_count": 0,
@@ -475,6 +481,7 @@ def extract_prediction_visualization_record(batch, prediction, draw_index=0):
         "past": _source_to_world(past_src[past_valid], map_center),
         "gt": _source_to_world(gt_src[gt_valid], map_center),
         "pred": _local_to_world(pred_xy[pred_valid], center_object_world, map_center),
+        "object_type": object_type,
         "top_mode": top_mode,
         "top_probability": top_probability,
         "past_valid_count": int(past_valid.sum()),
@@ -506,20 +513,43 @@ def prediction_record_pred_path_length(record):
     return len(record.get("past", ())) + len(record.get("pred", ()))
 
 
+def _record_xy(record, key):
+    points = np.asarray(record.get(key, ()), dtype=np.float32)
+    if points.ndim != 2 or len(points) == 0:
+        return np.zeros((0, 2), dtype=np.float32)
+    points = points[:, :2]
+    return points[np.isfinite(points).all(axis=-1)]
+
+
+def _path_displacement(points):
+    points = np.asarray(points, dtype=np.float32)
+    if points.ndim != 2 or len(points) < 2:
+        return 0.0
+    return float(np.linalg.norm(points[-1, :2] - points[0, :2]))
+
+
 def prediction_record_pred_displacement(record):
-    pred = np.asarray(record.get("pred", ()), dtype=np.float32)
-    if pred.ndim != 2 or len(pred) < 2:
-        return 0.0
-    valid = np.isfinite(pred[:, :2]).all(axis=-1)
-    pred = pred[valid, :2]
-    if len(pred) < 2:
-        return 0.0
-    return float(np.linalg.norm(pred[-1] - pred[0]))
+    return _path_displacement(_record_xy(record, "pred"))
+
+
+def prediction_record_gt_displacement(record):
+    return _path_displacement(_record_xy(record, "gt"))
+
+
+def is_target_vehicle_prediction_record(record):
+    object_type = record.get("object_type", None)
+    if object_type is None:
+        return bool(record.get("is_target_track", False))
+    if isinstance(object_type, (np.integer, int)):
+        return int(object_type) == 1
+    normalized = str(object_type).strip().lower()
+    return normalized in {"1", "vehicle", "type_vehicle", "car", "truck", "bus"} or normalized.endswith(".vehicle")
 
 
 def is_drawable_prediction_record(record, min_total_steps=61):
     return (
         bool(record.get("is_target_track", False))
+        and is_target_vehicle_prediction_record(record)
         and int(record.get("past_valid_count", 0)) == 21
         and int(record.get("gt_valid_count", 0)) == 60
         and int(record.get("pred_valid_count", 0)) >= 60
@@ -528,44 +558,149 @@ def is_drawable_prediction_record(record, min_total_steps=61):
     )
 
 
-def prediction_record_diagnostics(records, min_total_steps=61):
+def is_moving_prediction_record(record, min_total_steps=61, min_displacement=2.0):
+    return (
+        is_drawable_prediction_record(record, min_total_steps=min_total_steps)
+        and prediction_record_gt_displacement(record) >= min_displacement
+        and prediction_record_pred_displacement(record) >= min_displacement
+    )
+
+
+def prediction_record_diagnostics(records, min_total_steps=61, min_displacement=2.0):
     return {
         "candidates": len(records),
         "target_track": sum(1 for record in records if bool(record.get("is_target_track", False))),
+        "target_vehicle": sum(1 for record in records if is_target_vehicle_prediction_record(record)),
         "past_21": sum(1 for record in records if int(record.get("past_valid_count", 0)) == 21),
         "gt_60": sum(1 for record in records if int(record.get("gt_valid_count", 0)) == 60),
         "pred_60": sum(1 for record in records if int(record.get("pred_valid_count", 0)) >= 60),
         "drawable": sum(1 for record in records if is_drawable_prediction_record(record, min_total_steps=min_total_steps)),
+        "moving": sum(
+            1
+            for record in records
+            if is_moving_prediction_record(record, min_total_steps=min_total_steps, min_displacement=min_displacement)
+        ),
     }
 
 
-def _select_longest_prediction_displacement_records(records, max_tracks, min_total_steps=61):
-    drawable_records = [record for record in records if is_drawable_prediction_record(record, min_total_steps=min_total_steps)]
-    return sorted(
-        drawable_records,
+def _resample_polyline(points, num_samples=32):
+    points = np.asarray(points, dtype=np.float32)
+    if len(points) == 0:
+        return np.zeros((0, 2), dtype=np.float32)
+    if len(points) == 1:
+        return np.repeat(points[:, :2], num_samples, axis=0)
+
+    segment_lengths = np.linalg.norm(np.diff(points[:, :2], axis=0), axis=1)
+    cumulative = np.concatenate([[0.0], np.cumsum(segment_lengths)])
+    total = float(cumulative[-1])
+    if total <= 1e-6:
+        return np.repeat(points[:1, :2], num_samples, axis=0)
+
+    target = np.linspace(0.0, total, num_samples)
+    x = np.interp(target, cumulative, points[:, 0])
+    y = np.interp(target, cumulative, points[:, 1])
+    return np.stack([x, y], axis=-1).astype(np.float32)
+
+
+def _trajectory_overlap_distance(path_a, path_b):
+    samples_a = _resample_polyline(path_a)
+    samples_b = _resample_polyline(path_b)
+    if len(samples_a) == 0 or len(samples_b) == 0:
+        return np.inf
+    forward = np.linalg.norm(samples_a - samples_b, axis=-1).mean()
+    reverse = np.linalg.norm(samples_a - samples_b[::-1], axis=-1).mean()
+    return float(min(forward, reverse))
+
+
+def _record_display_path(record):
+    points = [_record_xy(record, key) for key in ("past", "gt")]
+    points = [point for point in points if len(point)]
+    if not points:
+        return np.zeros((0, 2), dtype=np.float32)
+    return np.concatenate(points, axis=0)
+
+
+def _select_moving_non_overlapping_records(records, max_tracks, min_track_distance=4.0, min_total_steps=61, min_displacement=2.0):
+    moving_records = [
+        record
+        for record in records
+        if is_moving_prediction_record(record, min_total_steps=min_total_steps, min_displacement=min_displacement)
+    ]
+    ranked = sorted(
+        moving_records,
         key=lambda item: (
             -prediction_record_pred_displacement(item),
+            -prediction_record_gt_displacement(item),
             -float(item.get("top_probability", 0.0)),
             str(item.get("scenario_id", "")),
             str(item.get("object_id", "")),
         ),
-    )[:max_tracks]
+    )
+    selected = []
+    selected_paths = []
+    for record in ranked:
+        path = _record_display_path(record)
+        if all(_trajectory_overlap_distance(path, selected_path) >= min_track_distance for selected_path in selected_paths):
+            selected.append(record)
+            selected_paths.append(path)
+        if len(selected) >= max_tracks:
+            break
+    return selected
 
 
-def select_prediction_records_for_osm_map(records, max_tracks=4, min_track_distance=None, min_total_steps=61):
-    return _select_longest_prediction_displacement_records(
+def select_prediction_records_for_osm_map(
+    records,
+    max_tracks=8,
+    min_track_distance=4.0,
+    min_total_steps=61,
+    min_displacement=2.0,
+):
+    return _select_moving_non_overlapping_records(
         records,
         max_tracks=max_tracks,
+        min_track_distance=min_track_distance,
         min_total_steps=min_total_steps,
+        min_displacement=min_displacement,
     )
+
+
+def _plot_map_feature(ax, feature, xlim=None, ylim=None):
+    geometry, closed = _feature_geometry(feature)
+    if len(geometry) < 2:
+        return
+    if xlim is not None and ylim is not None:
+        gx_min, gy_min = np.nanmin(geometry, axis=0)
+        gx_max, gy_max = np.nanmax(geometry, axis=0)
+        if gx_max < xlim[0] or gx_min > xlim[1] or gy_max < ylim[0] or gy_min > ylim[1]:
+            return
+
+    feature_type = str(feature.get("type", ""))
+    if "BOUNDARY" in feature_type:
+        style = {"color": "#111111", "linewidth": 1.2, "linestyle": "-"}
+    elif "BROKEN" in feature_type:
+        style = {"color": "#b8b8b8", "linewidth": 0.8, "linestyle": (0, (4, 4))}
+    elif "ROAD_LINE" in feature_type:
+        style = {"color": "#b0b0b0", "linewidth": 0.9, "linestyle": "-"}
+    elif "LANE" in feature_type:
+        style = {"color": "#9b9b9b", "linewidth": 0.55, "linestyle": ":"}
+    elif feature_type == "CROSSWALK":
+        style = {"color": "#c0c0c0", "linewidth": 0.8, "linestyle": "-"}
+    else:
+        style = {"color": "#c7c7c7", "linewidth": 0.6, "linestyle": "-"}
+
+    plot_points = geometry
+    if closed and len(geometry) >= 3:
+        plot_points = np.vstack([geometry, geometry[:1]])
+    ax.plot(plot_points[:, 0], plot_points[:, 1], alpha=0.95, zorder=1, **style)
 
 
 def visualize_prediction_records_on_osm_map(
     map_features,
     records,
-    max_tracks=4,
-    min_track_distance=None,
+    max_tracks=8,
+    min_track_distance=4.0,
     min_total_steps=61,
+    min_displacement=2.0,
     title="Prediction trajectories",
 ):
     selected_records = select_prediction_records_for_osm_map(
@@ -573,10 +708,16 @@ def visualize_prediction_records_on_osm_map(
         max_tracks=max_tracks,
         min_track_distance=min_track_distance,
         min_total_steps=min_total_steps,
+        min_displacement=min_displacement,
     )
     if not selected_records:
-        raise ValueError(f"No drawable prediction records for {title}")
+        raise ValueError(f"No moving drawable target-vehicle prediction records for {title}")
     drawable_count = sum(1 for record in records if is_drawable_prediction_record(record, min_total_steps=min_total_steps))
+    moving_count = sum(
+        1
+        for record in records
+        if is_moving_prediction_record(record, min_total_steps=min_total_steps, min_displacement=min_displacement)
+    )
     fig, ax = plt.subplots(figsize=(11, 9))
 
     focus_points = []
@@ -595,15 +736,7 @@ def visualize_prediction_records_on_osm_map(
         xlim = ylim = None
 
     for feature in map_features.values():
-        geometry, closed = _feature_geometry(feature)
-        if len(geometry) < 2:
-            continue
-        if xlim is not None and ylim is not None:
-            gx_min, gy_min = np.nanmin(geometry, axis=0)
-            gx_max, gy_max = np.nanmax(geometry, axis=0)
-            if gx_max < xlim[0] or gx_min > xlim[1] or gy_max < ylim[0] or gy_min > ylim[1]:
-                continue
-        ax.plot(geometry[:, 0], geometry[:, 1], color="#d6d6d6", linewidth=0.7, alpha=0.55, zorder=1)
+        _plot_map_feature(ax, feature, xlim=xlim, ylim=ylim)
 
     if xlim is not None and ylim is not None:
         ax.set_xlim(*xlim)
@@ -669,7 +802,7 @@ def visualize_prediction_records_on_osm_map(
             label_flags["pred"] = True
 
     ax.set_title(
-        f"{title} | longest predicted displacement {len(selected_records)}/{drawable_count} drawable tracks ({len(records)} candidates)",
+        f"{title} | moving non-overlap {len(selected_records)}/{moving_count} moving ({drawable_count} drawable, {len(records)} candidates)",
         fontsize=12,
     )
     ax.set_aspect("equal", adjustable="box")

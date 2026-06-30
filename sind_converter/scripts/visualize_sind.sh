@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --job-name=sind_visualization
+#SBATCH --job-name=sind_prediction_visualization
 #SBATCH --output=/home/%u/projects/SinD_UniTraj_signal/logs/%x-%j.out
 #SBATCH --error=/home/%u/projects/SinD_UniTraj_signal/logs/%x-%j.err
 #SBATCH --partition=gpu
@@ -21,7 +21,7 @@ SCRATCH_ROOT="${SCRATCH_ROOT:-/scratch/izar/ke/sind_cache}"
 METHOD="${METHOD:-MTR}"
 CKPT_PATH="${CKPT_PATH:-}"
 CKPT_ROOT="${CKPT_ROOT:-${PROJECT_ROOT}/UniTraj/unitraj_ckpt}"
-EXP_NAME="${EXP_NAME:-sind_${METHOD}_eval}"
+EXP_NAME="${EXP_NAME:-sind_${METHOD}_visualization}"
 WANDB_PROJECT="${WANDB_PROJECT:-SinD_UniTraj}"
 
 SPLIT_MODE="${SPLIT_MODE:-record_level}"
@@ -51,13 +51,13 @@ USER_VIS_OUTPUT_DIR="${VIS_OUTPUT_DIR:-}"
 VIS_OUTPUT_DIR="${VIS_OUTPUT_DIR:-${OUTPUT_ROOT}/${EXP_NAME}}"
 AGGREGATE_VISUALIZATION="${AGGREGATE_VISUALIZATION:-true}"
 AGGREGATE_ONLY="${AGGREGATE_ONLY:-true}"
-AGGREGATE_MIN_TRACKS="${AGGREGATE_MIN_TRACKS:-4}"
-AGGREGATE_MAX_TRACKS="${AGGREGATE_MAX_TRACKS:-4}"
+AGGREGATE_MIN_TRACKS="${AGGREGATE_MIN_TRACKS:-3}"
+AGGREGATE_MAX_TRACKS="${AGGREGATE_MAX_TRACKS:-8}"
 AGGREGATE_MIN_TRACK_DISTANCE="${AGGREGATE_MIN_TRACK_DISTANCE:-4.0}"
+AGGREGATE_MIN_DISPLACEMENT="${AGGREGATE_MIN_DISPLACEMENT:-2.0}"
 AGGREGATE_MIN_TOTAL_STEPS="${AGGREGATE_MIN_TOTAL_STEPS:-81}"
 VISUALIZATION_DATA_ROOT="${VISUALIZATION_DATA_ROOT:-/scratch/izar/ke/sind_raw}"
 VISUALIZATION_MAP_FALLBACK_ROOT="${VISUALIZATION_MAP_FALLBACK_ROOT:-${VISUALIZATION_DATA_ROOT}}"
-RUN_EVALUATION="${RUN_EVALUATION:-false}"
 RUN_VISUALIZATION="${RUN_VISUALIZATION:-true}"
 WANDB_MODE="${WANDB_MODE:-disabled}"
 
@@ -263,16 +263,14 @@ run_one() {
   fi
   echo "[info] cache_path=${CACHE_PATH}"
   echo "[info] val_data_path=${VAL_DATA_PATH}"
-  echo "[info] validation_samples=${sample_count} after MAX_VAL_DATA_NUM/total"
+  echo "[info] visualization_cache_samples=${sample_count} after MAX_VAL_DATA_NUM/total"
   echo "[info] num_prediction_visualizations=${NUM_IMAGES}"
+  echo "[info] aggregate_tracks=${AGGREGATE_MIN_TRACKS}-${AGGREGATE_MAX_TRACKS}"
+  echo "[info] aggregate_min_displacement=${AGGREGATE_MIN_DISPLACEMENT}"
+  echo "[info] aggregate_min_track_distance=${AGGREGATE_MIN_TRACK_DISTANCE}"
   echo "[info] use_traffic_light_tokens=${signal}"
   echo "[info] use_lane_control_state_in_map_tokens=${lane_control_map_tokens}"
   echo "[info] visualization_output_dir=${output_dir}"
-
-  if [ "${RUN_EVALUATION}" = "true" ]; then
-    echo "[step] evaluation: ${label}"
-    python unitraj/evaluation.py "${common_overrides[@]}"
-  fi
 
   if [ "${RUN_VISUALIZATION}" = "true" ]; then
     echo "[step] prediction visualization: ${label}"
@@ -287,6 +285,7 @@ run_one() {
       "+aggregate_min_tracks=${AGGREGATE_MIN_TRACKS}" \
       "+aggregate_max_tracks=${AGGREGATE_MAX_TRACKS}" \
       "+aggregate_min_track_distance=${AGGREGATE_MIN_TRACK_DISTANCE}" \
+      "+aggregate_min_displacement=${AGGREGATE_MIN_DISPLACEMENT}" \
       "+aggregate_min_total_steps=${AGGREGATE_MIN_TOTAL_STEPS}" \
       "+aggregate_cities=${aggregate_cities_arg}" \
       "+visualization_data_root=${VISUALIZATION_DATA_ROOT}" \
@@ -368,16 +367,16 @@ if [ "${RUN_SUITE}" = "true" ]; then
   echo "[info] record_level_aggregate_cities=${CITY_HOLDOUT_NAMES}"
   echo "[info] city_holdout_ckpt_cities=${CITY_HOLDOUT_CKPT_CITIES}"
   if suite_contains "mtr_baseline"; then
-    run_one "mtr_baseline" "MTR" "$(ckpt_candidate_for MTR_BASELINE "${CKPT_ROOT}/sind_MTR_baseline")" "sind_MTR_baseline_eval" "false" "${BASELINE_SCRATCH_ROOT}" "false" "record_level" "" "${CITY_HOLDOUT_NAMES}"
+    run_one "mtr_baseline" "MTR" "$(ckpt_candidate_for MTR_BASELINE "${CKPT_ROOT}/sind_MTR_baseline")" "sind_MTR_baseline_vis" "false" "${BASELINE_SCRATCH_ROOT}" "false" "record_level" "" "${CITY_HOLDOUT_NAMES}"
   fi
   if suite_contains "mtr_signal"; then
-    run_one "mtr_signal" "MTR" "$(ckpt_candidate_for MTR_SIGNAL "${CKPT_ROOT}/sind_MTR_signal_baseline")" "sind_MTR_signal_baseline_eval" "true" "${SIGNAL_SCRATCH_ROOT}" "true" "record_level" "" "${CITY_HOLDOUT_NAMES}"
+    run_one "mtr_signal" "MTR" "$(ckpt_candidate_for MTR_SIGNAL "${CKPT_ROOT}/sind_MTR_signal_baseline")" "sind_MTR_signal_baseline_vis" "true" "${SIGNAL_SCRATCH_ROOT}" "true" "record_level" "" "${CITY_HOLDOUT_NAMES}"
   fi
   if suite_contains "wayformer_baseline"; then
-    run_one "wayformer_baseline" "wayformer" "$(ckpt_candidate_for WAYFORMER_BASELINE "${CKPT_ROOT}/sind_wayformer_baseline")" "sind_wayformer_baseline_eval" "false" "${BASELINE_SCRATCH_ROOT}" "false" "record_level" "" "${CITY_HOLDOUT_NAMES}"
+    run_one "wayformer_baseline" "wayformer" "$(ckpt_candidate_for WAYFORMER_BASELINE "${CKPT_ROOT}/sind_wayformer_baseline")" "sind_wayformer_baseline_vis" "false" "${BASELINE_SCRATCH_ROOT}" "false" "record_level" "" "${CITY_HOLDOUT_NAMES}"
   fi
   if suite_contains "wayformer_signal"; then
-    run_one "wayformer_signal" "wayformer" "$(ckpt_candidate_for WAYFORMER_SIGNAL "${CKPT_ROOT}/sind_wayformer_signal_baseline")" "sind_wayformer_signal_baseline_eval" "true" "${SIGNAL_SCRATCH_ROOT}" "true" "record_level" "" "${CITY_HOLDOUT_NAMES}"
+    run_one "wayformer_signal" "wayformer" "$(ckpt_candidate_for WAYFORMER_SIGNAL "${CKPT_ROOT}/sind_wayformer_signal_baseline")" "sind_wayformer_signal_baseline_vis" "true" "${SIGNAL_SCRATCH_ROOT}" "true" "record_level" "" "${CITY_HOLDOUT_NAMES}"
   fi
   # shellcheck disable=SC2206
   CITY_HOLDOUT_ARRAY=(${CITY_HOLDOUT_CKPT_CITIES})
@@ -386,16 +385,16 @@ if [ "${RUN_SUITE}" = "true" ]; then
     signal_tag="$(signal_city_holdout_tag "${city}")"
     city_env="$(city_env_prefix "${city}")"
     if suite_contains "mtr_cityholdout"; then
-      run_one "mtr_cityholdout_${city}" "MTR" "$(ckpt_candidate_for "MTR_CITYHOLDOUT_${city_env}" "${CKPT_ROOT}/sind_MTR_cityholdout_${city}")" "sind_MTR_cityholdout_${city}_eval" "false" "${BASELINE_SCRATCH_ROOT}" "false" "city_holdout" "${baseline_tag}" "${city}"
+      run_one "mtr_cityholdout_${city}" "MTR" "$(ckpt_candidate_for "MTR_CITYHOLDOUT_${city_env}" "${CKPT_ROOT}/sind_MTR_cityholdout_${city}")" "sind_MTR_cityholdout_${city}_vis" "false" "${BASELINE_SCRATCH_ROOT}" "false" "city_holdout" "${baseline_tag}" "${city}"
     fi
     if suite_contains "mtr_signal_cityholdout"; then
-      run_one "mtr_signal_cityholdout_${city}" "MTR" "$(ckpt_candidate_for "MTR_SIGNAL_CITYHOLDOUT_${city_env}" "${CKPT_ROOT}/sind_MTR_signal_cityholdout_${city}")" "sind_MTR_signal_cityholdout_${city}_eval" "true" "${SIGNAL_SCRATCH_ROOT}" "true" "city_holdout" "${signal_tag}" "${city}"
+      run_one "mtr_signal_cityholdout_${city}" "MTR" "$(ckpt_candidate_for "MTR_SIGNAL_CITYHOLDOUT_${city_env}" "${CKPT_ROOT}/sind_MTR_signal_cityholdout_${city}")" "sind_MTR_signal_cityholdout_${city}_vis" "true" "${SIGNAL_SCRATCH_ROOT}" "true" "city_holdout" "${signal_tag}" "${city}"
     fi
     if suite_contains "wayformer_cityholdout"; then
-      run_one "wayformer_cityholdout_${city}" "wayformer" "$(ckpt_candidate_for "WAYFORMER_CITYHOLDOUT_${city_env}" "${CKPT_ROOT}/sind_wayformer_cityholdout_${city}")" "sind_wayformer_cityholdout_${city}_eval" "false" "${BASELINE_SCRATCH_ROOT}" "false" "city_holdout" "${baseline_tag}" "${city}"
+      run_one "wayformer_cityholdout_${city}" "wayformer" "$(ckpt_candidate_for "WAYFORMER_CITYHOLDOUT_${city_env}" "${CKPT_ROOT}/sind_wayformer_cityholdout_${city}")" "sind_wayformer_cityholdout_${city}_vis" "false" "${BASELINE_SCRATCH_ROOT}" "false" "city_holdout" "${baseline_tag}" "${city}"
     fi
     if suite_contains "wayformer_signal_cityholdout"; then
-      run_one "wayformer_signal_cityholdout_${city}" "wayformer" "$(ckpt_candidate_for "WAYFORMER_SIGNAL_CITYHOLDOUT_${city_env}" "${CKPT_ROOT}/sind_wayformer_signal_cityholdout_${city}")" "sind_wayformer_signal_cityholdout_${city}_eval" "true" "${SIGNAL_SCRATCH_ROOT}" "true" "city_holdout" "${signal_tag}" "${city}"
+      run_one "wayformer_signal_cityholdout_${city}" "wayformer" "$(ckpt_candidate_for "WAYFORMER_SIGNAL_CITYHOLDOUT_${city_env}" "${CKPT_ROOT}/sind_wayformer_signal_cityholdout_${city}")" "sind_wayformer_signal_cityholdout_${city}_vis" "true" "${SIGNAL_SCRATCH_ROOT}" "true" "city_holdout" "${signal_tag}" "${city}"
     fi
   done
   echo "[done] suite outputs are under ${OUTPUT_ROOT}"
