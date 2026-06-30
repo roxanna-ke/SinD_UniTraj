@@ -80,12 +80,12 @@ def _save_aggregate_visualizations(cfg, output_dir, aggregate_records):
     min_displacement = float(cfg.get("aggregate_min_displacement", 2.0))
     requested_cities = _parse_city_list(cfg.get("aggregate_cities", None))
     cities = requested_cities or sorted({_city_from_scenario_id(record["scenario_id"]) for record in aggregate_records})
-    failed_cities = []
+    skipped_cities = []
     for city in cities:
         city_records = [record for record in aggregate_records if _city_from_scenario_id(record["scenario_id"]) == city]
         if city == "unknown" or not city_records:
             print(f"[warn] no aggregate candidates for city={city}")
-            failed_cities.append(city)
+            skipped_cities.append(city)
             continue
         diagnostics = visualization.prediction_record_diagnostics(
             city_records,
@@ -111,9 +111,15 @@ def _save_aggregate_visualizations(cfg, output_dir, aggregate_records):
             )
         )
         if len(selected_records) < min_tracks:
-            print(f"[warn] insufficient moving non-overlapping target vehicle tracks for city={city}")
-            failed_cities.append(city)
-            continue
+            if selected_records:
+                print(
+                    f"[warn] city={city} has only {len(selected_records)} moving non-overlapping "
+                    f"target vehicle tracks; saving available tracks instead of failing"
+                )
+            else:
+                print(f"[warn] no moving non-overlapping target vehicle tracks for city={city}; skipping aggregate image")
+                skipped_cities.append(city)
+                continue
         map_path = resolve_map_path(city, data_root, map_fallback_root)
         map_features, _ = parse_osm_map(map_path)
         output_path = output_dir / f"aggregate_{city}.png"
@@ -131,8 +137,8 @@ def _save_aggregate_visualizations(cfg, output_dir, aggregate_records):
         plot.close()
         plt.close("all")
         print(f"[done] saved aggregate visualization to {output_path}")
-    if failed_cities:
-        raise RuntimeError(f"Failed to generate required aggregate visualizations for cities: {', '.join(failed_cities)}")
+    if skipped_cities:
+        print(f"[warn] skipped aggregate visualizations for cities: {', '.join(skipped_cities)}")
 
 
 @hydra.main(version_base=None, config_path="configs", config_name="config")
