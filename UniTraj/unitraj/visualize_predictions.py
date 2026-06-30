@@ -73,9 +73,9 @@ def _save_aggregate_visualizations(cfg, output_dir, aggregate_records):
         return
     data_root = Path(cfg.get("visualization_data_root", "/scratch/izar/ke/sind_raw"))
     map_fallback_root = Path(cfg.get("visualization_map_fallback_root", str(data_root)))
-    max_tracks = int(cfg.get("aggregate_max_tracks", 24))
-    min_tracks = int(cfg.get("aggregate_min_tracks", min(3, max_tracks)))
-    min_track_distance = float(cfg.get("aggregate_min_track_distance", 8.0))
+    max_tracks = int(cfg.get("aggregate_max_tracks", 4))
+    min_tracks = int(cfg.get("aggregate_min_tracks", max_tracks))
+    min_track_distance = cfg.get("aggregate_min_track_distance", None)
     min_total_steps = int(cfg.get("aggregate_min_total_steps", 61))
     requested_cities = _parse_city_list(cfg.get("aggregate_cities", None))
     cities = requested_cities or sorted({_city_from_scenario_id(record["scenario_id"]) for record in aggregate_records})
@@ -96,7 +96,7 @@ def _save_aggregate_visualizations(cfg, output_dir, aggregate_records):
         print(
             "[info] aggregate city={city} candidates={candidates} target_track={target_track} "
             "past_21={past_21} gt_60={gt_60} pred_60={pred_60} "
-            "drawable={drawable} selected={selected}/{min_tracks}-{max_tracks}".format(
+            "drawable={drawable} selected_longest_pred_displacement={selected}/{min_tracks}-{max_tracks}".format(
                 city=city,
                 selected=len(selected_records),
                 min_tracks=min_tracks,
@@ -168,8 +168,8 @@ def visualize(cfg):
     aggregate_records = []
     aggregate_visualization = bool(cfg.get("aggregate_visualization", False))
     target_cities = _parse_city_list(cfg.get("aggregate_cities", None)) or list(ALL_SIND_CITIES)
-    aggregate_max_tracks = int(cfg.get("aggregate_max_tracks", 24))
-    aggregate_min_tracks = int(cfg.get("aggregate_min_tracks", min(3, aggregate_max_tracks)))
+    aggregate_max_tracks = int(cfg.get("aggregate_max_tracks", 4))
+    aggregate_min_tracks = int(cfg.get("aggregate_min_tracks", aggregate_max_tracks))
     aggregate_min_total_steps = int(cfg.get("aggregate_min_total_steps", 61))
 
     def enough_aggregate_records():
@@ -184,7 +184,7 @@ def visualize(cfg):
             selected_records = visualization.select_prediction_records_for_osm_map(
                 city_records,
                 max_tracks=aggregate_max_tracks,
-                min_track_distance=float(cfg.get("aggregate_min_track_distance", 8.0)),
+                min_track_distance=cfg.get("aggregate_min_track_distance", None),
                 min_total_steps=aggregate_min_total_steps,
             )
             if len(selected_records) < aggregate_max_tracks:

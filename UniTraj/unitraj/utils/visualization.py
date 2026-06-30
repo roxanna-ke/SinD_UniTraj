@@ -498,19 +498,23 @@ def _feature_geometry(feature):
     return geometry[:, :2], closed
 
 
-def _observed_future_path(record):
-    points = [record[key] for key in ("past", "gt") if len(record.get(key, ()))]
-    if not points:
-        return np.zeros((0, 2), dtype=np.float32)
-    return np.concatenate(points, axis=0)
-
-
 def prediction_record_path_length(record):
     return len(record.get("past", ())) + len(record.get("gt", ()))
 
 
 def prediction_record_pred_path_length(record):
     return len(record.get("past", ())) + len(record.get("pred", ()))
+
+
+def prediction_record_pred_displacement(record):
+    pred = np.asarray(record.get("pred", ()), dtype=np.float32)
+    if pred.ndim != 2 or len(pred) < 2:
+        return 0.0
+    valid = np.isfinite(pred[:, :2]).all(axis=-1)
+    pred = pred[valid, :2]
+    if len(pred) < 2:
+        return 0.0
+    return float(np.linalg.norm(pred[-1] - pred[0]))
 
 
 def is_drawable_prediction_record(record, min_total_steps=61):
@@ -535,65 +539,23 @@ def prediction_record_diagnostics(records, min_total_steps=61):
     }
 
 
-def _resample_polyline(points, num_samples=32):
-    points = np.asarray(points, dtype=np.float32)
-    if len(points) == 0:
-        return np.zeros((0, 2), dtype=np.float32)
-    if len(points) == 1:
-        return np.repeat(points[:, :2], num_samples, axis=0)
-
-    segment_lengths = np.linalg.norm(np.diff(points[:, :2], axis=0), axis=1)
-    cumulative = np.concatenate([[0.0], np.cumsum(segment_lengths)])
-    total = float(cumulative[-1])
-    if total <= 1e-6:
-        return np.repeat(points[:1, :2], num_samples, axis=0)
-
-    target = np.linspace(0.0, total, num_samples)
-    x = np.interp(target, cumulative, points[:, 0])
-    y = np.interp(target, cumulative, points[:, 1])
-    return np.stack([x, y], axis=-1).astype(np.float32)
-
-
-def _trajectory_overlap_distance(path_a, path_b):
-    samples_a = _resample_polyline(path_a)
-    samples_b = _resample_polyline(path_b)
-    if len(samples_a) == 0 or len(samples_b) == 0:
-        return np.inf
-    forward = np.linalg.norm(samples_a - samples_b, axis=-1).mean()
-    reverse = np.linalg.norm(samples_a - samples_b[::-1], axis=-1).mean()
-    return float(min(forward, reverse))
-
-
-def _select_non_overlapping_records(records, max_tracks, min_track_distance, min_total_steps=61):
-    selected = []
-    selected_paths = []
+def _select_longest_prediction_displacement_records(records, max_tracks, min_total_steps=61):
     drawable_records = [record for record in records if is_drawable_prediction_record(record, min_total_steps=min_total_steps)]
-    ranked = sorted(
+    return sorted(
         drawable_records,
         key=lambda item: (
-            -prediction_record_path_length(item),
-            -(len(item["gt"]) + len(item["pred"])),
+            -prediction_record_pred_displacement(item),
             -float(item.get("top_probability", 0.0)),
             str(item.get("scenario_id", "")),
+            str(item.get("object_id", "")),
         ),
-    )
-    for record in ranked:
-        path = _observed_future_path(record)
-        if len(path) < min_total_steps:
-            continue
-        if all(_trajectory_overlap_distance(path, prev_path) >= min_track_distance for prev_path in selected_paths):
-            selected.append(record)
-            selected_paths.append(path)
-        if len(selected) >= max_tracks:
-            break
-    return selected
+    )[:max_tracks]
 
 
-def select_prediction_records_for_osm_map(records, max_tracks=24, min_track_distance=8.0, min_total_steps=61):
-    return _select_non_overlapping_records(
+def select_prediction_records_for_osm_map(records, max_tracks=4, min_track_distance=None, min_total_steps=61):
+    return _select_longest_prediction_displacement_records(
         records,
         max_tracks=max_tracks,
-        min_track_distance=min_track_distance,
         min_total_steps=min_total_steps,
     )
 
@@ -601,8 +563,8 @@ def select_prediction_records_for_osm_map(records, max_tracks=24, min_track_dist
 def visualize_prediction_records_on_osm_map(
     map_features,
     records,
-    max_tracks=24,
-    min_track_distance=8.0,
+    max_tracks=4,
+    min_track_distance=None,
     min_total_steps=61,
     title="Prediction trajectories",
 ):
@@ -706,7 +668,10 @@ def visualize_prediction_records_on_osm_map(
             )
             label_flags["pred"] = True
 
-    ax.set_title(f"{title} | shown {len(selected_records)}/{drawable_count} drawable tracks ({len(records)} candidates)", fontsize=12)
+    ax.set_title(
+        f"{title} | longest predicted displacement {len(selected_records)}/{drawable_count} drawable tracks ({len(records)} candidates)",
+        fontsize=12,
+    )
     ax.set_aspect("equal", adjustable="box")
     ax.axis("off")
     ax.legend(loc="upper right", frameon=True, framealpha=0.92, fontsize=9)
