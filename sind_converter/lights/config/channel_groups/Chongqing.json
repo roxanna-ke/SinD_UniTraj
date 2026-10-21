@@ -1,0 +1,59 @@
+{
+  "city": "Chongqing",
+  "channel_groups": [
+    {
+      "group_id": "phase_1",
+      "traffic_light_channels": [
+        "Vehicle Traffic light 1",
+        "Vehicle Traffic light 3"
+      ],
+      "movements": [
+        {
+          "stopline_id": "-104179",
+          "movement": "left"
+        },
+        {
+          "stopline_id": "-104179",
+          "movement": "straight"
+        },
+        {
+          "stopline_id": "-104199",
+          "movement": "left"
+        },
+        {
+          "stopline_id": "-104199",
+          "movement": "straight"
+        }
+      ],
+      "confidence": "high",
+      "source": "opposing_arm_two_phase_model"
+    },
+    {
+      "group_id": "phase_2",
+      "traffic_light_channels": [
+        "Vehicle Traffic light 2",
+        "Vehicle Traffic light 4"
+      ],
+      "movements": [
+        {
+          "stopline_id": "-104197",
+          "movement": "left"
+        },
+        {
+          "stopline_id": "-104197",
+          "movement": "straight"
+        },
+        {
+          "stopline_id": "-104196",
+          "movement": "left"
+        },
+        {
+          "stopline_id": "-104196",
+          "movement": "straight"
+        }
+      ],
+      "confidence": "high",
+      "source": "opposing_arm_two_phase_model"
+    }
+  ]
+}

@@ -46,7 +46,15 @@ def _dataset_class(method: str):
     return getattr(module, spec["dataset_class"])
 
 
-def _build_cfg(config_path: Path, unitraj_root: Path, method: str, split_dir: Path, cache_root: Path, overwrite: bool):
+def _build_cfg(
+    config_path: Path,
+    unitraj_root: Path,
+    method: str,
+    split_dir: Path,
+    cache_root: Path,
+    overwrite: bool,
+    use_traffic_light_tokens: bool = False,
+):
     from omegaconf import OmegaConf
 
     method_path = unitraj_root / "unitraj" / "configs" / "method" / METHODS[method]["config"]
@@ -66,6 +74,7 @@ def _build_cfg(config_path: Path, unitraj_root: Path, method: str, split_dir: Pa
     cfg.use_cache = False
     cfg.overwrite_cache = overwrite
     cfg.store_data_in_memory = False
+    cfg.use_traffic_light_tokens = use_traffic_light_tokens
     return cfg
 
 
@@ -162,7 +171,15 @@ def _dry_run_unitraj(method: str, split_dir: Path, summary: dict, scenario_files
         tmp_path = Path(tmp)
         subset_dir = tmp_path / "subset" / phase / dataset_name
         _write_subset(split_dir, subset_dir, sample_files, summary, mapping)
-        cfg = _build_cfg(args.config, args.unitraj_root, method, subset_dir, tmp_path / "cache" / method, overwrite=True)
+        cfg = _build_cfg(
+            args.config,
+            args.unitraj_root,
+            method,
+            subset_dir,
+            tmp_path / "cache" / method,
+            overwrite=True,
+            use_traffic_light_tokens=args.use_traffic_light_tokens,
+        )
 
         old_cwd = Path.cwd()
         try:
@@ -178,13 +195,25 @@ def _dry_run_unitraj(method: str, split_dir: Path, summary: dict, scenario_files
             for key in ("obj_trajs", "obj_trajs_mask", "map_polylines", "track_index_to_predict"):
                 if key not in first:
                     raise ValueError(f"UniTraj dry-run output for {method} missing key: {key}")
+            if args.use_traffic_light_tokens:
+                for key in ("light_token_features", "light_token_mask", "light_token_valid_mask", "light_token_pos"):
+                    if key not in first:
+                        raise ValueError(f"UniTraj dry-run output for {method} missing key: {key}")
         finally:
             os.chdir(old_cwd)
 
 
 def _build_cache(method: str, split_dir: Path, cache_root: Path, args: argparse.Namespace) -> None:
     Dataset = _dataset_class(method)
-    cfg = _build_cfg(args.config, args.unitraj_root, method, split_dir, cache_root, overwrite=args.overwrite)
+    cfg = _build_cfg(
+        args.config,
+        args.unitraj_root,
+        method,
+        split_dir,
+        cache_root,
+        overwrite=args.overwrite,
+        use_traffic_light_tokens=args.use_traffic_light_tokens,
+    )
     Dataset(cfg, is_validation=False)
 
 
@@ -202,6 +231,11 @@ def main() -> None:
     parser.add_argument("--future-len", type=int, default=60)
     parser.add_argument("--overwrite", action="store_true", help="Overwrite existing UniTraj cache directories.")
     parser.add_argument("--validate-only", action="store_true", help="Run checks but do not build full caches.")
+    parser.add_argument(
+        "--use-traffic-light-tokens",
+        action="store_true",
+        help="Enable history-based traffic-light token fields in the built cache and validate that schema during dry-run.",
+    )
     args = parser.parse_args()
 
     total_steps = args.past_len + args.future_len

@@ -40,15 +40,24 @@ class Wayformer(BaseModel):
         self.tx_hidden_size = config['tx_hidden_size']
         self.use_map_img = config['use_map_image']
         self.use_map_lanes = config['use_map_lanes']
+        self.use_traffic_light_tokens = config.get('use_traffic_light_tokens', False)
         self.past_T = config['past_len']
         self.max_points_per_lane = config['max_points_per_lane']
         self.max_num_roads = config['max_num_roads']
+        self.max_num_lights = config.get('max_num_lights', 32)
         self.num_queries_enc = config['num_queries_enc']
         self.num_queries_dec = config['num_queries_dec']
 
         self.road_pts_lin = nn.Sequential(init_(nn.Linear(self.map_attr, self.d_k)))
         # INPUT ENCODERS
         self.agents_dynamic_encoder = nn.Sequential(init_(nn.Linear(self.k_attr, self.d_k)))
+        if self.use_traffic_light_tokens:
+            self.light_step_encoder = nn.Sequential(init_(nn.Linear(config['num_light_feature'], self.d_k)))
+            self.light_temporal_encoder = nn.GRU(
+                input_size=self.d_k,
+                hidden_size=self.d_k,
+                batch_first=True,
+            )
         self.perceiver_encoder = PerceiverEncoder(self.num_queries_enc, self.d_k,
                                                   num_cross_attention_qk_channels=self.d_k,
                                                   num_cross_attention_v_channels=self.d_k,
@@ -120,6 +129,9 @@ class Wayformer(BaseModel):
             mode_probs: shape [B, c] mode probability predictions P(z|X_{1:T_obs})
         '''
         ego_in, agents_in, roads = inputs['ego_in'], inputs['agents_in'], inputs['roads']
+        light_token_features = inputs.get('light_token_features')
+        light_token_mask = inputs.get('light_token_mask')
+        light_token_valid_mask = inputs.get('light_token_valid_mask')
 
         B = ego_in.size(0)
         num_agents = agents_in.shape[2] + 1
@@ -131,9 +143,34 @@ class Wayformer(BaseModel):
                                    :num_agents] + self.temporal_positional_embedding).view(B, -1, self.d_k)
         road_pts_feats = self.selu(self.road_pts_lin(roads[:, :self.max_num_roads, :, :self.map_attr]).view(B, -1,
                                                                                                             self.d_k))# + self.map_positional_embedding
-        mixed_input_features = torch.concat([agents_emb, road_pts_feats], dim=1)
         opps_masks_roads = (1.0 - roads[:, :self.max_num_roads, :, -1]).to(torch.bool)
-        mixed_input_masks = torch.concat([opps_masks_agents.view(B, -1), opps_masks_roads.view(B, -1)], dim=1)
+        mixed_feature_chunks = [agents_emb, road_pts_feats]
+        mixed_mask_chunks = [opps_masks_agents.view(B, -1), opps_masks_roads.view(B, -1)]
+        if self.use_traffic_light_tokens:
+            if light_token_features is None or light_token_mask is None or light_token_valid_mask is None:
+                raise ValueError(
+                    "Traffic-light token augmentation is enabled for Wayformer, but the loaded batch is missing "
+                    "light_token_features/light_token_mask/light_token_valid_mask. Rebuild the cache and retry."
+                )
+            if light_token_features.shape[-1] != self.config['num_light_feature']:
+                raise ValueError(
+                    f"light_token_features has {light_token_features.shape[-1]} features, "
+                    f"but Wayformer expects {self.config['num_light_feature']}"
+                )
+            num_lights = min(light_token_features.shape[1], self.max_num_lights)
+            light_token_features = light_token_features[:, :num_lights]
+            light_token_mask = light_token_mask[:, :num_lights]
+            light_token_valid_mask = light_token_valid_mask[:, :num_lights]
+            encoded_steps = self.light_step_encoder(light_token_features.reshape(-1, light_token_features.shape[-1]))
+            encoded_steps = encoded_steps.view(B * num_lights, light_token_features.shape[2], self.d_k)
+            encoded_steps = encoded_steps * light_token_valid_mask.reshape(B * num_lights, light_token_features.shape[2], 1).type_as(encoded_steps)
+            _, hidden_state = self.light_temporal_encoder(encoded_steps)
+            light_features = hidden_state[-1].view(B, num_lights, self.d_k)
+            light_features = light_features * light_token_mask[:, :, None].type_as(light_features)
+            mixed_feature_chunks.append(light_features)
+            mixed_mask_chunks.append(light_token_mask)
+        mixed_input_features = torch.concat(mixed_feature_chunks, dim=1)
+        mixed_input_masks = torch.concat(mixed_mask_chunks, dim=1)
         # Process through Wayformer's encoder
 
         context = self.perceiver_encoder(mixed_input_features, mixed_input_masks)
@@ -175,6 +212,10 @@ class Wayformer(BaseModel):
         model_input['ego_in'] = ego_in
         model_input['agents_in'] = agents_in
         model_input['roads'] = roads
+        if self.use_traffic_light_tokens:
+            model_input['light_token_features'] = inputs['light_token_features']
+            model_input['light_token_mask'] = inputs['light_token_mask']
+            model_input['light_token_valid_mask'] = inputs['light_token_valid_mask']
         output = self._forward(model_input)
 
         ground_truth = torch.cat([inputs['center_gt_trajs'][..., :2], inputs['center_gt_trajs_mask'].unsqueeze(-1)],
@@ -266,7 +307,6 @@ class Criterion(nn.Module):
         loss_cls = (F.cross_entropy(input=pred_scores, target=nearest_mode_idxs, reduction='none'))
 
         return (reg_loss + loss_cls).mean()
-
 
 
 

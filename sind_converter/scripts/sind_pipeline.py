@@ -62,6 +62,7 @@ def main() -> None:
     cache.add_argument("--unitraj-root", type=Path, required=True)
     cache.add_argument("--unitraj-config", type=Path, required=True)
     cache.add_argument("--method", choices=["autobot", "mtr", "wayformer"], default="autobot")
+    cache.add_argument("--use-traffic-light-tokens", action="store_true")
 
     args = parser.parse_args()
     cfg = _config_from_args(args)
@@ -85,7 +86,14 @@ def main() -> None:
     elif args.command == "build-cache":
         from sind_converter.cache.build import build_unitraj_cache
 
-        build_unitraj_cache(args.split_dataset_dir, args.unitraj_root, args.unitraj_config, method=args.method, cache_root=cfg.cache_root)
+        build_unitraj_cache(
+            args.split_dataset_dir,
+            args.unitraj_root,
+            args.unitraj_config,
+            method=args.method,
+            cache_root=cfg.cache_root,
+            use_traffic_light_tokens=args.use_traffic_light_tokens,
+        )
 
 
 if __name__ == "__main__":

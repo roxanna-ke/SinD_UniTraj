@@ -34,6 +34,7 @@ class MotionTransformer(BaseModel):
         self.model_cfg.MOTION_DECODER['CENTER_OFFSET_OF_MAP'] = self.model_cfg['center_offset_of_map']
         self.model_cfg.MOTION_DECODER['NUM_FUTURE_FRAMES'] = self.model_cfg['future_len']
         self.model_cfg.MOTION_DECODER['OBJECT_TYPE'] = self.model_cfg['object_type']
+        self.model_cfg.CONTEXT_ENCODER['USE_TRAFFIC_LIGHT_TOKENS'] = self.model_cfg.get('use_traffic_light_tokens', False)
 
         self.context_encoder = MTREncoder(self.model_cfg.CONTEXT_ENCODER)
         self.motion_decoder = MTRDecoder(
@@ -99,6 +100,18 @@ class MTREncoder(nn.Module):
             num_pre_layers=self.model_cfg.NUM_LAYER_IN_PRE_MLP_MAP,
             out_channels=self.model_cfg.D_MODEL
         )
+        self.use_traffic_light_tokens = self.model_cfg.get('USE_TRAFFIC_LIGHT_TOKENS', False)
+        if self.use_traffic_light_tokens:
+            self.light_step_encoder = nn.Sequential(
+                nn.Linear(self.model_cfg.NUM_INPUT_ATTR_LIGHT, self.model_cfg.D_MODEL),
+                nn.ReLU(),
+                nn.Linear(self.model_cfg.D_MODEL, self.model_cfg.D_MODEL),
+            )
+            self.light_temporal_encoder = nn.GRU(
+                input_size=self.model_cfg.D_MODEL,
+                hidden_size=self.model_cfg.D_MODEL,
+                batch_first=True,
+            )
 
         # build transformer encoder layers
         self.use_local_attn = self.model_cfg.get('USE_LOCAL_ATTN', False)
@@ -245,14 +258,49 @@ class MTREncoder(nn.Module):
                                                             obj_trajs_mask)  # (num_center_objects, num_objects, C)
         map_polylines_feature = self.map_polyline_encoder(map_polylines,
                                                           map_polylines_mask)  # (num_center_objects, num_polylines, C)
+        light_token_feature = None
+        light_token_mask = None
+        light_token_pos = None
+        if self.use_traffic_light_tokens:
+            required_light_fields = {'light_token_features', 'light_token_mask', 'light_token_valid_mask', 'light_token_pos'}
+            missing_fields = sorted(required_light_fields - set(input_dict.keys()))
+            if missing_fields:
+                raise ValueError(
+                    'Traffic-light token augmentation is enabled, but the loaded batch is missing '
+                    f'{missing_fields}. Rebuild the cache with the updated dataset code.'
+                )
+            light_token_features = input_dict['light_token_features']
+            light_token_mask = input_dict['light_token_mask']
+            light_token_valid_mask = input_dict['light_token_valid_mask']
+            light_token_pos = input_dict['light_token_pos']
+            if light_token_features.shape[-1] != self.model_cfg.NUM_INPUT_ATTR_LIGHT:
+                raise ValueError(
+                    f"light_token_features has {light_token_features.shape[-1]} features, "
+                    f"but the model expects {self.model_cfg.NUM_INPUT_ATTR_LIGHT}"
+                )
+            batch_size, num_lights, num_light_steps, feature_dim = light_token_features.shape
+            encoded_steps = self.light_step_encoder(light_token_features.reshape(-1, feature_dim))
+            encoded_steps = encoded_steps.view(batch_size * num_lights, num_light_steps, self.model_cfg.D_MODEL)
+            encoded_steps = encoded_steps * light_token_valid_mask.reshape(batch_size * num_lights, num_light_steps, 1).type_as(encoded_steps)
+            _, hidden_state = self.light_temporal_encoder(encoded_steps)
+            light_token_feature = hidden_state[-1].view(batch_size, num_lights, self.model_cfg.D_MODEL)
+            light_token_feature = light_token_feature * light_token_mask[:, :, None].type_as(light_token_feature)
 
         # apply self-attn
         obj_valid_mask = (obj_trajs_mask.sum(dim=-1) > 0)  # (num_center_objects, num_objects)
         map_valid_mask = (map_polylines_mask.sum(dim=-1) > 0)  # (num_center_objects, num_polylines)
 
-        global_token_feature = torch.cat((obj_polylines_feature, map_polylines_feature), dim=1)
-        global_token_mask = torch.cat((obj_valid_mask, map_valid_mask), dim=1)
-        global_token_pos = torch.cat((obj_trajs_last_pos, map_polylines_center), dim=1)
+        global_feature_chunks = [obj_polylines_feature, map_polylines_feature]
+        global_mask_chunks = [obj_valid_mask, map_valid_mask]
+        global_pos_chunks = [obj_trajs_last_pos, map_polylines_center]
+        if self.use_traffic_light_tokens:
+            global_feature_chunks.append(light_token_feature)
+            global_mask_chunks.append(light_token_mask)
+            global_pos_chunks.append(light_token_pos)
+
+        global_token_feature = torch.cat(global_feature_chunks, dim=1)
+        global_token_mask = torch.cat(global_mask_chunks, dim=1)
+        global_token_pos = torch.cat(global_pos_chunks, dim=1)
 
         if self.use_local_attn:
             global_token_feature = self.apply_local_attn(
@@ -266,6 +314,8 @@ class MTREncoder(nn.Module):
 
         obj_polylines_feature = global_token_feature[:, :num_objects]
         map_polylines_feature = global_token_feature[:, num_objects:]
+        if self.use_traffic_light_tokens:
+            map_polylines_feature = map_polylines_feature[:, :num_polylines]
         assert map_polylines_feature.shape[1] == num_polylines
 
         # organize return features

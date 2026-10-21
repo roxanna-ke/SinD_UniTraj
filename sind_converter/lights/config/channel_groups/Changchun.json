@@ -1,0 +1,57 @@
+{
+  "city": "Changchun",
+  "channel_groups": [
+    {
+      "group_id": "phase_NS",
+      "traffic_light_channels": [
+        "Vehicle Traffic light 1"
+      ],
+      "movements": [
+        {
+          "stopline_id": "-106227",
+          "movement": "left"
+        },
+        {
+          "stopline_id": "-106227",
+          "movement": "straight"
+        },
+        {
+          "stopline_id": "-106229",
+          "movement": "left"
+        },
+        {
+          "stopline_id": "-106229",
+          "movement": "straight"
+        }
+      ],
+      "confidence": "high",
+      "source": "opposing_arm_two_phase_model"
+    },
+    {
+      "group_id": "phase_EW",
+      "traffic_light_channels": [
+        "Vehicle Traffic light 2"
+      ],
+      "movements": [
+        {
+          "stopline_id": "-106228",
+          "movement": "left"
+        },
+        {
+          "stopline_id": "-106228",
+          "movement": "straight"
+        },
+        {
+          "stopline_id": "-106230",
+          "movement": "left"
+        },
+        {
+          "stopline_id": "-106230",
+          "movement": "straight"
+        }
+      ],
+      "confidence": "high",
+      "source": "opposing_arm_two_phase_model"
+    }
+  ]
+}

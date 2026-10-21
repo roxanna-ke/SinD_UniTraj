@@ -6,7 +6,8 @@ CONTEXT_ENCODER:
   NAME: MTREncoder
   NUM_OF_ATTN_NEIGHBORS: 7
   NUM_INPUT_ATTR_AGENT: 39
-  NUM_INPUT_ATTR_MAP: 29
+  NUM_INPUT_ATTR_MAP: 38
+  NUM_INPUT_ATTR_LIGHT: 21
   NUM_CHANNEL_IN_MLP_AGENT: 256
   NUM_CHANNEL_IN_MLP_MAP: 64
   NUM_LAYER_IN_MLP_AGENT: 3
@@ -63,8 +64,6 @@ manually_split_lane: True
 point_sampled_interval: 1
 num_points_each_polyline: 20
 vector_break_dist_thresh: 1.0
-
-
 
 
 

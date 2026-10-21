@@ -1,0 +1,77 @@
+{
+  "city": "Tianjin",
+  "channel_groups": [
+    {
+      "group_id": "phase_E",
+      "traffic_light_channels": [
+        "Traffic light 2"
+      ],
+      "movements": [
+        {
+          "stopline_id": "-124112",
+          "movement": "left"
+        },
+        {
+          "stopline_id": "-124112",
+          "movement": "straight"
+        }
+      ],
+      "confidence": "high",
+      "source": "opposing_arm_two_phase_model"
+    },
+    {
+      "group_id": "phase_N",
+      "traffic_light_channels": [
+        "Traffic light 4"
+      ],
+      "movements": [
+        {
+          "stopline_id": "-124117",
+          "movement": "left"
+        },
+        {
+          "stopline_id": "-124117",
+          "movement": "straight"
+        }
+      ],
+      "confidence": "high",
+      "source": "opposing_arm_two_phase_model"
+    },
+    {
+      "group_id": "phase_W",
+      "traffic_light_channels": [
+        "Traffic light 6"
+      ],
+      "movements": [
+        {
+          "stopline_id": "-124127",
+          "movement": "left"
+        },
+        {
+          "stopline_id": "-124127",
+          "movement": "straight"
+        }
+      ],
+      "confidence": "high",
+      "source": "opposing_arm_two_phase_model"
+    },
+    {
+      "group_id": "phase_S",
+      "traffic_light_channels": [
+        "Traffic light 8"
+      ],
+      "movements": [
+        {
+          "stopline_id": "-124159",
+          "movement": "left"
+        },
+        {
+          "stopline_id": "-124159",
+          "movement": "straight"
+        }
+      ],
+      "confidence": "high",
+      "source": "opposing_arm_two_phase_model"
+    }
+  ]
+}

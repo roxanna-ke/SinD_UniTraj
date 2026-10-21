@@ -13,6 +13,8 @@ from scenarionet.converter.utils import write_to_directory_single_worker
 from sind_converter.config.defaults import ConverterConfig
 from sind_converter.data.discovery import RecordDescription, discover_records
 from sind_converter.data.loading import load_record
+from sind_converter.lights.bindings import resolve_signal_bindings
+from sind_converter.lights.stopline_extraction import extract_stop_lines
 from sind_converter.maps.osm import (
     TrainingMapAdmissionRules,
     build_admission_rules,
@@ -43,9 +45,18 @@ def windows_for_record(
     stride: int,
     max_scenarios: int | None = None,
     admission_rules: TrainingMapAdmissionRules | None = None,
+    traffic_light_binding_root: Path | None = None,
 ) -> list[ScenarioWindow]:
     loaded = load_record(record)
     map_features, lane_centers = parse_osm_map(record.map_path, admission_rules=admission_rules)
+    stop_lines = extract_stop_lines(record.map_path, record.city)
+    traffic_light_bindings = resolve_signal_bindings(
+        record=record,
+        traffic_light=loaded.traffic_light,
+        map_features=map_features,
+        stop_lines=stop_lines,
+        binding_root=traffic_light_binding_root,
+    )
     return generate_windows(
         city=record.city,
         record_name=record.record_name,
@@ -54,6 +65,7 @@ def windows_for_record(
         map_features=map_features,
         lane_centers=lane_centers,
         traffic_light=loaded.traffic_light,
+        traffic_light_bindings=traffic_light_bindings,
         past_len=past_len,
         future_len=future_len,
         stride=stride,
@@ -69,14 +81,12 @@ def convert_scenarios(
 ) -> Path:
     if config.total_length != 81:
         raise ValueError(f"UniTraj-compatible SinD conversion expects 81 total steps, got {config.total_length}")
+    if config.training_mapping_table is None:
+        raise ValueError("convert-scenarios requires a four-city OSM training mapping table; run audit-maps first")
     records = discover_records(config.data_root, config.map_fallback_root, cities=cities)
     if max_records is not None:
         records = records[:max_records]
-    admission_rules = (
-        build_admission_rules(load_training_mapping_table(config.training_mapping_table))
-        if config.training_mapping_table is not None
-        else None
-    )
+    admission_rules = build_admission_rules(load_training_mapping_table(config.training_mapping_table))
     windows: list[ScenarioWindow] = []
     for record in records:
         windows.extend(
@@ -87,6 +97,7 @@ def convert_scenarios(
                 stride=config.stride,
                 max_scenarios=max_scenarios_per_record,
                 admission_rules=admission_rules,
+                traffic_light_binding_root=config.traffic_light_binding_root,
             )
         )
     if not windows:

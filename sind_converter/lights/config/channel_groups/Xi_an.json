@@ -1,0 +1,57 @@
+{
+  "city": "Xi_an",
+  "channel_groups": [
+    {
+      "group_id": "phase_NS",
+      "traffic_light_channels": [
+        "Traffic light 1"
+      ],
+      "movements": [
+        {
+          "stopline_id": "-103736",
+          "movement": "left"
+        },
+        {
+          "stopline_id": "-103736",
+          "movement": "straight"
+        },
+        {
+          "stopline_id": "-103745",
+          "movement": "left"
+        },
+        {
+          "stopline_id": "-103745",
+          "movement": "straight"
+        }
+      ],
+      "confidence": "high",
+      "source": "opposing_arm_two_phase_model"
+    },
+    {
+      "group_id": "phase_EW",
+      "traffic_light_channels": [
+        "Traffic light 2"
+      ],
+      "movements": [
+        {
+          "stopline_id": "-103740",
+          "movement": "left"
+        },
+        {
+          "stopline_id": "-103740",
+          "movement": "straight"
+        },
+        {
+          "stopline_id": "-103753",
+          "movement": "left"
+        },
+        {
+          "stopline_id": "-103753",
+          "movement": "straight"
+        }
+      ],
+      "confidence": "high",
+      "source": "opposing_arm_two_phase_model"
+    }
+  ]
+}

@@ -1,0 +1,135 @@
+{
+  "city": "Tianjin",
+  "lane_bindings": [
+    {
+      "stopline_id": "-124112",
+      "movement": "left",
+      "lane_ids": [
+        "lane_E_EX_1_to_S_EN_1",
+        "lane_E_EX_3_to_S_EN_2"
+      ],
+      "stop_point": [
+        31.182,
+        17.917,
+        0.0
+      ],
+      "confidence": "medium",
+      "source": "candidate_from_map_geometry",
+      "notes": "source_arm=E"
+    },
+    {
+      "stopline_id": "-124112",
+      "movement": "straight",
+      "lane_ids": [
+        "lane_E_EX_1_to_W_EN_1",
+        "lane_E_EX_2_to_W_EN_2",
+        "lane_E_EX_3_to_W_EN_3"
+      ],
+      "stop_point": [
+        14.766,
+        17.785,
+        0.0
+      ],
+      "confidence": "medium",
+      "source": "candidate_from_map_geometry",
+      "notes": "source_arm=E"
+    },
+    {
+      "stopline_id": "-124117",
+      "movement": "left",
+      "lane_ids": [
+        "lane_N_EX_1_to_E_EN_1",
+        "lane_N_EX_2_to_E_EN_3"
+      ],
+      "stop_point": [
+        11.102,
+        32.512,
+        0.0
+      ],
+      "confidence": "medium",
+      "source": "candidate_from_map_geometry",
+      "notes": "source_arm=N"
+    },
+    {
+      "stopline_id": "-124117",
+      "movement": "straight",
+      "lane_ids": [
+        "lane_N_EX_1_to_S_EN_1",
+        "lane_N_EX_2_to_S_EN_2"
+      ],
+      "stop_point": [
+        11.102,
+        32.512,
+        0.0
+      ],
+      "confidence": "medium",
+      "source": "candidate_from_map_geometry",
+      "notes": "source_arm=N"
+    },
+    {
+      "stopline_id": "-124127",
+      "movement": "left",
+      "lane_ids": [
+        "lane_W_EX_1_to_N_EN_1",
+        "lane_W_EX_3_to_N_EN_2"
+      ],
+      "stop_point": [
+        -1.663,
+        14.662,
+        0.0
+      ],
+      "confidence": "medium",
+      "source": "candidate_from_map_geometry",
+      "notes": "source_arm=W"
+    },
+    {
+      "stopline_id": "-124127",
+      "movement": "straight",
+      "lane_ids": [
+        "lane_W_EX_1_to_E_EN_1",
+        "lane_W_EX_2_to_E_EN_2",
+        "lane_W_EX_3_to_E_EN_3"
+      ],
+      "stop_point": [
+        -1.663,
+        14.662,
+        0.0
+      ],
+      "confidence": "medium",
+      "source": "candidate_from_map_geometry",
+      "notes": "source_arm=W"
+    },
+    {
+      "stopline_id": "-124159",
+      "movement": "left",
+      "lane_ids": [
+        "lane_S_EX_1_to_W_EN_1",
+        "lane_S_EX_2_to_W_EN_3"
+      ],
+      "stop_point": [
+        16.326,
+        -0.301,
+        0.0
+      ],
+      "confidence": "medium",
+      "source": "candidate_from_map_geometry",
+      "notes": "source_arm=S"
+    },
+    {
+      "stopline_id": "-124159",
+      "movement": "straight",
+      "lane_ids": [
+        "lane_S_EX_1_to_N_EN_1",
+        "lane_S_EX_2_to_N_EN_2"
+      ],
+      "stop_point": [
+        15.737,
+        16.119,
+        0.0
+      ],
+      "confidence": "medium",
+      "source": "candidate_from_map_geometry",
+      "notes": "source_arm=S"
+    }
+  ]
+}

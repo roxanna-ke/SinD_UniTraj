@@ -43,6 +43,7 @@ def test_modular_convert_writes_shared_multitarget_canonical_and_split(tmp_path)
         canonical_scenario_root=tmp_path / "canonical",
         split_root=tmp_path / "splits",
         cache_root=tmp_path / "cache",
+        training_mapping_table=PROJECT_ROOT / "osm_audit_four_cities" / "osm_training_mapping_table.csv",
         stride=80,
     )
     canonical_root = convert_scenarios(cfg, cities=["Tianjin"], max_records=2, max_scenarios_per_record=2)
@@ -96,6 +97,7 @@ def test_agent_state_uses_frame_id_alignment_when_timestamps_differ():
         map_features={},
         lane_centers={},
         traffic_light=None,
+        traffic_light_bindings=(),
         past_len=21,
         future_len=60,
         stride=81,
