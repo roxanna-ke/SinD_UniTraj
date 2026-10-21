@@ -1,7 +1,7 @@
 #!/bin/bash
 #SBATCH --job-name=sind_scenarionet_cache
-#SBATCH --output=/home/%u/projects/SinD_UniTraj/logs/%x-%j.out
-#SBATCH --error=/home/%u/projects/SinD_UniTraj/logs/%x-%j.err
+#SBATCH --output=%x-%j.out
+#SBATCH --error=%x-%j.err
 #SBATCH --partition=gpu
 #SBATCH --nodes=1
 #SBATCH --ntasks=1

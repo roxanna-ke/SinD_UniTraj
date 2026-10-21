@@ -43,11 +43,8 @@ SinD/Data/
 SinD/Dataset/
 UniTraj/unitraj/data_samples/
 UniTraj/scenarionet_output/
-sind_converter/cache/
+UniTraj/cache/
 _tmp_audit_check/
-osm_audit_four_cities/*
-!osm_audit_four_cities/
-!osm_audit_four_cities/osm_training_mapping_table.csv
 
 # Model checkpoints and experiment artifacts
 checkpoints/
@@ -62,3 +59,5 @@ lightning_logs/
 Summary/
 logs/
 output/
+tmp/
+.mplconfig/

@@ -58,6 +58,8 @@ def make_record_level_split(
     train_ratio: float = 0.8,
     seed: int = 42,
 ) -> dict[str, Path]:
+    if not 0 < train_ratio < 1:
+        raise ValueError("train_ratio must be between 0 and 1")
     summary, scenario_files, mapping = read_dataset_summary(canonical_root)
     records = sorted({_record_name(summary[file_name]) for file_name in scenario_files})
     rng = random.Random(seed)
@@ -97,6 +99,11 @@ def make_city_holdout_split(
         test_city_set = set(test_cities or [])
     if not train_city_set or not test_city_set:
         raise ValueError("City-level split requires non-empty train and test city sets")
+    if train_city_set & test_city_set:
+        raise ValueError(f"Cities cannot appear in both splits: {sorted(train_city_set & test_city_set)}")
+    unknown_cities = (train_city_set | test_city_set) - set(all_cities)
+    if unknown_cities:
+        raise ValueError(f"Unknown cities in split configuration: {sorted(unknown_cities)}")
 
     train_files = [file_name for file_name in scenario_files if _city_name(summary[file_name]) in train_city_set]
     test_files = [file_name for file_name in scenario_files if _city_name(summary[file_name]) in test_city_set]
