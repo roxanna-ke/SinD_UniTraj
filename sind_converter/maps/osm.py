@@ -345,7 +345,7 @@ def _collect_osm_audit_data(map_paths: list[Path]) -> OSMAuditData:
 
 def _write_csv(path: Path, fieldnames: list[str], rows: list[dict[str, Any]]) -> None:
     with path.open("w", newline="", encoding="utf-8") as f:
-        writer = csv.DictWriter(f, fieldnames=fieldnames, extrasaction="ignore")
+        writer = csv.DictWriter(f, fieldnames=fieldnames, extrasaction="ignore", lineterminator="\n")
         writer.writeheader()
         for row in rows:
             writer.writerow(row)
@@ -374,7 +374,7 @@ def _write_markdown_report(
         "",
     ]
     for map_path in map_paths:
-        lines.append(f"- {_city_name_for_map(map_path)}: `{map_path}`")
+        lines.append(f"- {_city_name_for_map(map_path)}: `{map_path.name}`")
     lines.extend(["", "## City Stats", ""])
     for city, stats in sorted(city_stats.items()):
         lines.append(
@@ -628,13 +628,13 @@ def audit_osm_tags(map_paths: list[Path], output_dir: Path) -> Path:
     )
 
     summary = {
-        "map_files": [str(path) for path in map_paths],
+        "map_files": [f"{_city_name_for_map(path)}/{path.name}" for path in map_paths],
         "cities": audited_cities,
         "city_stats": {city: dict(sorted(stats.items())) for city, stats in sorted(audit.city_stats.items())},
-        "training_mapping_table": str(table_path),
-        "tag_inventory": str(tag_inventory_path),
-        "relation_member_role_inventory": str(member_inventory_path),
-        "recovery_metrics": str(recovery_metrics_path),
+        "training_mapping_table": table_path.name,
+        "tag_inventory": tag_inventory_path.name,
+        "relation_member_role_inventory": member_inventory_path.name,
+        "recovery_metrics": recovery_metrics_path.name,
         "min_recovery_rate_for_training": MIN_RECOVERY_RATE_FOR_TRAINING,
         "included_patterns": [row["osm_pattern"] for row in mapping_rows if row["train_data_admission"] == "include"],
         "excluded_checked_patterns": [

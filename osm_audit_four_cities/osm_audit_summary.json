@@ -1,0 +1,220 @@
+{
+  "cities": [
+    "Changchun",
+    "Chongqing",
+    "Tianjin",
+    "Xi_an"
+  ],
+  "city_stats": {
+    "Changchun": {
+      "map_files": 1,
+      "node_count": 409,
+      "relation_count": 37,
+      "way_count": 59
+    },
+    "Chongqing": {
+      "map_files": 1,
+      "node_count": 455,
+      "relation_count": 52,
+      "way_count": 88
+    },
+    "Tianjin": {
+      "map_files": 1,
+      "node_count": 788,
+      "relation_count": 70,
+      "way_count": 100
+    },
+    "Xi_an": {
+      "map_files": 1,
+      "node_count": 827,
+      "relation_count": 56,
+      "way_count": 94
+    }
+  },
+  "excluded_checked_patterns": [
+    "relation:subtype=traffic_light",
+    "relation:type=regulatory_element",
+    "way:type=traffic_light",
+    "relation:regulatory_element:member:ref_line:way",
+    "relation:regulatory_element:member:refers:way"
+  ],
+  "included_patterns": [
+    "relation:subtype=crosswalk",
+    "relation:type=lanelet",
+    "way:type=curbstone",
+    "way:type=line_thick",
+    "way:type=line_thin",
+    "way:type=stop_line",
+    "way:type=virtual",
+    "relation:lanelet:member:left:way",
+    "relation:lanelet:member:right:way"
+  ],
+  "map_files": [
+    "Tianjin/map_relink_law_save.osm",
+    "Changchun/Changchun_Pudong.osm",
+    "Chongqing/NR_ll2.osm",
+    "Xi_an/Xi_an_Shanglin.osm"
+  ],
+  "min_recovery_rate_for_training": 0.95,
+  "observed_predecessor_or_successor_roles": false,
+  "recovery": {
+    "relation:lanelet:member:left:way": {
+      "audited_city_coverage": 1.0,
+      "cities": "Changchun;Chongqing;Tianjin;Xi_an",
+      "city_recovery_counts": "Changchun:37/37;Chongqing:48/48;Tianjin:62/62;Xi_an:52/52",
+      "city_recovery_rates": "Changchun:1.0;Chongqing:1.0;Tianjin:1.0;Xi_an:1.0",
+      "min_city_recovery_rate": 1.0,
+      "osm_pattern": "relation:lanelet:member:left:way",
+      "recovered_count": 199,
+      "recovery_rate": 1.0,
+      "total_count": 199
+    },
+    "relation:lanelet:member:right:way": {
+      "audited_city_coverage": 1.0,
+      "cities": "Changchun;Chongqing;Tianjin;Xi_an",
+      "city_recovery_counts": "Changchun:37/37;Chongqing:48/48;Tianjin:62/62;Xi_an:52/52",
+      "city_recovery_rates": "Changchun:1.0;Chongqing:1.0;Tianjin:1.0;Xi_an:1.0",
+      "min_city_recovery_rate": 1.0,
+      "osm_pattern": "relation:lanelet:member:right:way",
+      "recovered_count": 199,
+      "recovery_rate": 1.0,
+      "total_count": 199
+    },
+    "relation:regulatory_element:member:ref_line:way": {
+      "audited_city_coverage": 0.5,
+      "cities": "Chongqing;Tianjin",
+      "city_recovery_counts": "Chongqing:4/4;Tianjin:4/4",
+      "city_recovery_rates": "Chongqing:1.0;Tianjin:1.0",
+      "min_city_recovery_rate": 1.0,
+      "osm_pattern": "relation:regulatory_element:member:ref_line:way",
+      "recovered_count": 8,
+      "recovery_rate": 1.0,
+      "total_count": 8
+    },
+    "relation:regulatory_element:member:refers:way": {
+      "audited_city_coverage": 0.5,
+      "cities": "Chongqing;Tianjin",
+      "city_recovery_counts": "Chongqing:4/4;Tianjin:4/4",
+      "city_recovery_rates": "Chongqing:1.0;Tianjin:1.0",
+      "min_city_recovery_rate": 1.0,
+      "osm_pattern": "relation:regulatory_element:member:refers:way",
+      "recovered_count": 8,
+      "recovery_rate": 1.0,
+      "total_count": 8
+    },
+    "relation:subtype=crosswalk": {
+      "audited_city_coverage": 0.25,
+      "cities": "Tianjin",
+      "city_recovery_counts": "Tianjin:4/4",
+      "city_recovery_rates": "Tianjin:1.0",
+      "min_city_recovery_rate": 1.0,
+      "osm_pattern": "relation:subtype=crosswalk",
+      "recovered_count": 4,
+      "recovery_rate": 1.0,
+      "total_count": 4
+    },
+    "relation:subtype=traffic_light": {
+      "audited_city_coverage": 0.5,
+      "cities": "Chongqing;Tianjin",
+      "city_recovery_counts": "Chongqing:4/4;Tianjin:4/4",
+      "city_recovery_rates": "Chongqing:1.0;Tianjin:1.0",
+      "min_city_recovery_rate": 1.0,
+      "osm_pattern": "relation:subtype=traffic_light",
+      "recovered_count": 8,
+      "recovery_rate": 1.0,
+      "total_count": 8
+    },
+    "relation:type=lanelet": {
+      "audited_city_coverage": 1.0,
+      "cities": "Changchun;Chongqing;Tianjin;Xi_an",
+      "city_recovery_counts": "Changchun:37/37;Chongqing:48/48;Tianjin:62/62;Xi_an:52/52",
+      "city_recovery_rates": "Changchun:1.0;Chongqing:1.0;Tianjin:1.0;Xi_an:1.0",
+      "min_city_recovery_rate": 1.0,
+      "osm_pattern": "relation:type=lanelet",
+      "recovered_count": 199,
+      "recovery_rate": 1.0,
+      "total_count": 199
+    },
+    "relation:type=regulatory_element": {
+      "audited_city_coverage": 0.5,
+      "cities": "Chongqing;Tianjin",
+      "city_recovery_counts": "Chongqing:4/4;Tianjin:4/4",
+      "city_recovery_rates": "Chongqing:1.0;Tianjin:1.0",
+      "min_city_recovery_rate": 1.0,
+      "osm_pattern": "relation:type=regulatory_element",
+      "recovered_count": 8,
+      "recovery_rate": 1.0,
+      "total_count": 8
+    },
+    "way:type=curbstone": {
+      "audited_city_coverage": 1.0,
+      "cities": "Changchun;Chongqing;Tianjin;Xi_an",
+      "city_recovery_counts": "Changchun:14/14;Chongqing:16/16;Tianjin:16/16;Xi_an:16/16",
+      "city_recovery_rates": "Changchun:1.0;Chongqing:1.0;Tianjin:1.0;Xi_an:1.0",
+      "min_city_recovery_rate": 1.0,
+      "osm_pattern": "way:type=curbstone",
+      "recovered_count": 62,
+      "recovery_rate": 1.0,
+      "total_count": 62
+    },
+    "way:type=line_thick": {
+      "audited_city_coverage": 0.25,
+      "cities": "Chongqing",
+      "city_recovery_counts": "Chongqing:4/4",
+      "city_recovery_rates": "Chongqing:1.0",
+      "min_city_recovery_rate": 1.0,
+      "osm_pattern": "way:type=line_thick",
+      "recovered_count": 4,
+      "recovery_rate": 1.0,
+      "total_count": 4
+    },
+    "way:type=line_thin": {
+      "audited_city_coverage": 1.0,
+      "cities": "Changchun;Chongqing;Tianjin;Xi_an",
+      "city_recovery_counts": "Changchun:5/5;Chongqing:16/16;Tianjin:16/16;Xi_an:22/22",
+      "city_recovery_rates": "Changchun:1.0;Chongqing:1.0;Tianjin:1.0;Xi_an:1.0",
+      "min_city_recovery_rate": 1.0,
+      "osm_pattern": "way:type=line_thin",
+      "recovered_count": 59,
+      "recovery_rate": 1.0,
+      "total_count": 59
+    },
+    "way:type=stop_line": {
+      "audited_city_coverage": 1.0,
+      "cities": "Changchun;Chongqing;Tianjin;Xi_an",
+      "city_recovery_counts": "Changchun:4/4;Chongqing:4/4;Tianjin:4/4;Xi_an:4/4",
+      "city_recovery_rates": "Changchun:1.0;Chongqing:1.0;Tianjin:1.0;Xi_an:1.0",
+      "min_city_recovery_rate": 1.0,
+      "osm_pattern": "way:type=stop_line",
+      "recovered_count": 16,
+      "recovery_rate": 1.0,
+      "total_count": 16
+    },
+    "way:type=traffic_light": {
+      "audited_city_coverage": 0.5,
+      "cities": "Chongqing;Tianjin",
+      "city_recovery_counts": "Chongqing:4/4;Tianjin:4/4",
+      "city_recovery_rates": "Chongqing:1.0;Tianjin:1.0",
+      "min_city_recovery_rate": 1.0,
+      "osm_pattern": "way:type=traffic_light",
+      "recovered_count": 8,
+      "recovery_rate": 1.0,
+      "total_count": 8
+    },
+    "way:type=virtual": {
+      "audited_city_coverage": 1.0,
+      "cities": "Changchun;Chongqing;Tianjin;Xi_an",
+      "city_recovery_counts": "Changchun:31/31;Chongqing:32/32;Tianjin:52/52;Xi_an:38/38",
+      "city_recovery_rates": "Changchun:1.0;Chongqing:1.0;Tianjin:1.0;Xi_an:1.0",
+      "min_city_recovery_rate": 1.0,
+      "osm_pattern": "way:type=virtual",
+      "recovered_count": 153,
+      "recovery_rate": 1.0,
+      "total_count": 153
+    }
+  },
+  "recovery_metrics": "osm_recovery_metrics.csv",
+  "relation_member_role_inventory": "osm_relation_member_role_inventory.csv",
+  "tag_inventory": "osm_tag_inventory.csv",
+  "training_mapping_table": "osm_training_mapping_table.csv"
+}

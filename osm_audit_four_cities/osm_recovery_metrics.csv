@@ -1,0 +1,15 @@
+osm_pattern,cities,audited_city_coverage,total_count,recovered_count,recovery_rate,min_city_recovery_rate,city_recovery_rates,city_recovery_counts
+relation:lanelet:member:left:way,Changchun;Chongqing;Tianjin;Xi_an,1.0,199,199,1.0,1.0,Changchun:1.0;Chongqing:1.0;Tianjin:1.0;Xi_an:1.0,Changchun:37/37;Chongqing:48/48;Tianjin:62/62;Xi_an:52/52
+relation:lanelet:member:right:way,Changchun;Chongqing;Tianjin;Xi_an,1.0,199,199,1.0,1.0,Changchun:1.0;Chongqing:1.0;Tianjin:1.0;Xi_an:1.0,Changchun:37/37;Chongqing:48/48;Tianjin:62/62;Xi_an:52/52
+relation:regulatory_element:member:ref_line:way,Chongqing;Tianjin,0.5,8,8,1.0,1.0,Chongqing:1.0;Tianjin:1.0,Chongqing:4/4;Tianjin:4/4
+relation:regulatory_element:member:refers:way,Chongqing;Tianjin,0.5,8,8,1.0,1.0,Chongqing:1.0;Tianjin:1.0,Chongqing:4/4;Tianjin:4/4
+relation:subtype=crosswalk,Tianjin,0.25,4,4,1.0,1.0,Tianjin:1.0,Tianjin:4/4
+relation:subtype=traffic_light,Chongqing;Tianjin,0.5,8,8,1.0,1.0,Chongqing:1.0;Tianjin:1.0,Chongqing:4/4;Tianjin:4/4
+relation:type=lanelet,Changchun;Chongqing;Tianjin;Xi_an,1.0,199,199,1.0,1.0,Changchun:1.0;Chongqing:1.0;Tianjin:1.0;Xi_an:1.0,Changchun:37/37;Chongqing:48/48;Tianjin:62/62;Xi_an:52/52
+relation:type=regulatory_element,Chongqing;Tianjin,0.5,8,8,1.0,1.0,Chongqing:1.0;Tianjin:1.0,Chongqing:4/4;Tianjin:4/4
+way:type=curbstone,Changchun;Chongqing;Tianjin;Xi_an,1.0,62,62,1.0,1.0,Changchun:1.0;Chongqing:1.0;Tianjin:1.0;Xi_an:1.0,Changchun:14/14;Chongqing:16/16;Tianjin:16/16;Xi_an:16/16
+way:type=line_thick,Chongqing,0.25,4,4,1.0,1.0,Chongqing:1.0,Chongqing:4/4
+way:type=line_thin,Changchun;Chongqing;Tianjin;Xi_an,1.0,59,59,1.0,1.0,Changchun:1.0;Chongqing:1.0;Tianjin:1.0;Xi_an:1.0,Changchun:5/5;Chongqing:16/16;Tianjin:16/16;Xi_an:22/22
+way:type=stop_line,Changchun;Chongqing;Tianjin;Xi_an,1.0,16,16,1.0,1.0,Changchun:1.0;Chongqing:1.0;Tianjin:1.0;Xi_an:1.0,Changchun:4/4;Chongqing:4/4;Tianjin:4/4;Xi_an:4/4
+way:type=traffic_light,Chongqing;Tianjin,0.5,8,8,1.0,1.0,Chongqing:1.0;Tianjin:1.0,Chongqing:4/4;Tianjin:4/4
+way:type=virtual,Changchun;Chongqing;Tianjin;Xi_an,1.0,153,153,1.0,1.0,Changchun:1.0;Chongqing:1.0;Tianjin:1.0;Xi_an:1.0,Changchun:31/31;Chongqing:32/32;Tianjin:52/52;Xi_an:38/38
